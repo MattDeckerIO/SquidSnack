@@ -1210,37 +1210,37 @@
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    /* Ten legs: eight stubby arms plus a longer outer pair. */
+    /* Ten legs, every one the same length, fanned out behind the mantle. */
     var LEGS = 10;
+    var legLen = s * 1.02 * (1 - speed * 0.14);
     for (var i = 0; i < LEGS; i++) {
       var t = (i / (LEGS - 1)) - 0.5;
-      var outer = (i === 0 || i === LEGS - 1);
-      var baseY = t * s * 1.04;
-      var baseX = -s * (0.56 - Math.abs(t) * 0.26);
-      var len = s * (0.86 - Math.abs(t) * 0.12) * (outer ? 1.32 : 1) * (1 - speed * 0.16);
-      var spread = t * s * (outer ? 0.78 : 0.56);
-      var swing = Math.sin(wig + i * 0.66) * s * (outer ? 0.2 : 0.14);
+      var baseY = t * s * 1.14;
+      var baseX = -s * (0.52 - Math.abs(t) * 0.2);
+      var dir = Math.PI - t * 1.38;
+      var dcos = Math.cos(dir), dsin = Math.sin(dir);
+      var swing = Math.sin(wig + i * 0.66) * s * 0.13;
       ctx.beginPath();
       ctx.moveTo(baseX, baseY);
       ctx.quadraticCurveTo(
-        baseX - len * 0.58, baseY + spread * 0.42 + swing * 0.45,
-        baseX - len, baseY + spread + swing
+        baseX + dcos * legLen * 0.5 - dsin * swing,
+        baseY + dsin * legLen * 0.5 + dcos * swing,
+        baseX + dcos * legLen,
+        baseY + dsin * legLen
       );
-      ctx.lineWidth = s * (outer ? 0.15 : 0.2 - Math.abs(t) * 0.02);
-      ctx.strokeStyle = outer ? c.arm : c.armInner;
+      ctx.lineWidth = s * 0.155;
+      ctx.strokeStyle = (i === 0 || i === LEGS - 1) ? c.arm : c.armInner;
       ctx.stroke();
     }
 
     /* The wide flat fin cap that sits over the point of the mantle. */
     ctx.beginPath();
-    ctx.moveTo(s * 1.24, 0);
-    ctx.quadraticCurveTo(s * 1.0, -s * 0.78, s * 0.44, -s * 1.2);
-    ctx.lineTo(s * 0.3, -s * 0.9);
-    ctx.quadraticCurveTo(s * 0.6, -s * 0.52, s * 0.8, -s * 0.12);
-    ctx.lineTo(s * 0.8, s * 0.12);
-    ctx.quadraticCurveTo(s * 0.6, s * 0.52, s * 0.3, s * 0.9);
-    ctx.lineTo(s * 0.44, s * 1.2);
-    ctx.quadraticCurveTo(s * 1.0, s * 0.78, s * 1.24, 0);
+    ctx.moveTo(s * 1.28, 0);
+    ctx.quadraticCurveTo(s * 0.96, -s * 0.72, s * 0.34, -s * 1.1);
+    ctx.lineTo(s * 0.14, -s * 0.74);
+    ctx.lineTo(s * 0.14, s * 0.74);
+    ctx.lineTo(s * 0.34, s * 1.1);
+    ctx.quadraticCurveTo(s * 0.96, s * 0.72, s * 1.28, 0);
     ctx.closePath();
     var fg = ctx.createLinearGradient(s * 1.2, 0, s * 0.3, 0);
     fg.addColorStop(0, c.finLip);
