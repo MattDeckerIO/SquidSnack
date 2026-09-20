@@ -19,7 +19,7 @@
     --mid:#0B4A63;
     --foam:#D9F1F7;
     --foam-dim:#8FB8C6;
-    --squid:#FF6F91;
+    --squid:#E8434C;
     --snack:#FFD166;
     --heart:#FF4D6D;
     --heart-off:#274B5C;
@@ -83,7 +83,7 @@
     font-size:clamp(42px,11vw,86px);line-height:.95;
     color:var(--squid);
     text-wrap:balance;
-    text-shadow:0 6px 24px rgba(255,111,145,.35);
+    text-shadow:0 6px 24px rgba(232,67,76,.35);
   }
   .veil h2{
     margin:0;
@@ -188,12 +188,19 @@
   var nextShrimpAt = 10;
   var lastHitBy = "shark";
 
+  /* Plush-toy squid: deep red, wide flat fin cap, stubby arms, felt-black face. */
   var YOU = {
-    top: "#FF9FB8", mid: "#FF6F91", low: "#D64672",
-    fin: "rgba(255,150,178,0.9)",
-    arm: "#FF87A4", armEdge: "#E2547C",
-    eye: "#FFF6F8", pupil: "#14202B"
+    bodyTop: "#E8434C",
+    bodyMid: "#C8202C",
+    bodyLow: "#8B111F",
+    fin: "#B01927",
+    finLip: "#D22E3A",
+    arm: "#B81C29",
+    armInner: "#D2303C",
+    belly: "#F2ABA6",
+    ink: "#160A0D"
   };
+
   var JELLY = {
     bellTop: "rgba(214,192,255,0.92)",
     bellMid: "rgba(163,126,238,0.72)",
@@ -758,7 +765,7 @@
         var noseX = sk.x + Math.cos(sk.angle) * sk.size * 0.75;
         var noseY = sk.y + Math.sin(sk.angle) * sk.size * 0.75;
         if (Math.hypot(noseX - squid.x, noseY - squid.y) < sk.size * 0.62 + squid.size * 0.7) {
-          burst(squid.x, squid.y, "255,109,145", 16);
+          burst(squid.x, squid.y, "232,67,76", 16);
           hitHeart(noseX, noseY, "shark");
           if (lives <= 0) return;
         }
@@ -1198,70 +1205,91 @@
     ctx.globalAlpha = alpha;
     ctx.translate(px, py);
     ctx.rotate(ang);
-
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    /* Eight stubby arms, splayed out behind the mantle. */
     for (var i = 0; i < 8; i++) {
       var t = (i / 7) - 0.5;
-      var baseY = t * s * 0.72;
-      var phase = wig + i * 0.7;
-      var len = s * (1.25 + Math.abs(t) * 0.35) * (1 - speed * 0.18);
+      var baseY = t * s * 1.1;
+      var baseX = -s * (0.58 - Math.abs(t) * 0.3);
+      var len = s * (1.0 - Math.abs(t) * 0.2) * (1 - speed * 0.16);
+      var spread = t * s * 0.6;
+      var swing = Math.sin(wig + i * 0.78) * s * 0.17;
       ctx.beginPath();
-      ctx.moveTo(-s * 0.42, baseY);
+      ctx.moveTo(baseX, baseY);
       ctx.quadraticCurveTo(
-        -s * 0.42 - len * 0.55, baseY + Math.sin(phase) * s * 0.26,
-        -s * 0.42 - len, baseY + Math.sin(phase + 1.1) * s * 0.44
+        baseX - len * 0.58, baseY + spread * 0.42 + swing * 0.45,
+        baseX - len, baseY + spread + swing
       );
-      ctx.strokeStyle = (i === 0 || i === 7) ? c.armEdge : c.arm;
-      ctx.lineWidth = s * (i === 0 || i === 7 ? 0.17 : 0.13);
+      ctx.lineWidth = s * (0.27 - Math.abs(t) * 0.05);
+      ctx.strokeStyle = (i === 0 || i === 7) ? c.arm : c.armInner;
       ctx.stroke();
     }
 
+    /* The wide flat fin cap that sits over the point of the mantle. */
     ctx.beginPath();
-    ctx.moveTo(s * 0.62, -s * 0.5);
-    ctx.quadraticCurveTo(s * 1.12, -s * 0.9, s * 1.02, -s * 0.28);
+    ctx.moveTo(s * 1.24, 0);
+    ctx.quadraticCurveTo(s * 1.0, -s * 0.78, s * 0.44, -s * 1.2);
+    ctx.lineTo(s * 0.3, -s * 0.9);
+    ctx.quadraticCurveTo(s * 0.6, -s * 0.52, s * 0.8, -s * 0.12);
+    ctx.lineTo(s * 0.8, s * 0.12);
+    ctx.quadraticCurveTo(s * 0.6, s * 0.52, s * 0.3, s * 0.9);
+    ctx.lineTo(s * 0.44, s * 1.2);
+    ctx.quadraticCurveTo(s * 1.0, s * 0.78, s * 1.24, 0);
     ctx.closePath();
-    ctx.fillStyle = c.fin;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(s * 0.62, s * 0.5);
-    ctx.quadraticCurveTo(s * 1.12, s * 0.9, s * 1.02, s * 0.28);
-    ctx.closePath();
+    var fg = ctx.createLinearGradient(s * 1.2, 0, s * 0.3, 0);
+    fg.addColorStop(0, c.finLip);
+    fg.addColorStop(1, c.fin);
+    ctx.fillStyle = fg;
     ctx.fill();
 
+    /* Rounded plush mantle. */
     ctx.beginPath();
-    ctx.moveTo(s * 1.16, 0);
-    ctx.bezierCurveTo(s * 0.9, -s * 0.66, s * 0.1, -s * 0.72, -s * 0.34, -s * 0.5);
-    ctx.bezierCurveTo(-s * 0.62, -s * 0.3, -s * 0.62, s * 0.3, -s * 0.34, s * 0.5);
-    ctx.bezierCurveTo(s * 0.1, s * 0.72, s * 0.9, s * 0.66, s * 1.16, 0);
+    ctx.moveTo(s * 1.0, 0);
+    ctx.bezierCurveTo(s * 0.94, -s * 0.6, s * 0.34, -s * 0.9, -s * 0.16, -s * 0.84);
+    ctx.bezierCurveTo(-s * 0.7, -s * 0.76, -s * 0.84, -s * 0.34, -s * 0.84, 0);
+    ctx.bezierCurveTo(-s * 0.84, s * 0.34, -s * 0.7, s * 0.76, -s * 0.16, s * 0.84);
+    ctx.bezierCurveTo(s * 0.34, s * 0.9, s * 0.94, s * 0.6, s * 1.0, 0);
     ctx.closePath();
-    var mg = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
-    mg.addColorStop(0, c.top);
-    mg.addColorStop(0.55, c.mid);
-    mg.addColorStop(1, c.low);
+    var mg = ctx.createLinearGradient(0, -s * 0.9, 0, s * 0.9);
+    mg.addColorStop(0, c.bodyTop);
+    mg.addColorStop(0.5, c.bodyMid);
+    mg.addColorStop(1, c.bodyLow);
     ctx.fillStyle = mg;
     ctx.fill();
 
+    /* Pale tummy patch. */
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.85;
     ctx.beginPath();
-    ctx.ellipse(s * 0.42, -s * 0.24, s * 0.34, s * 0.12, -0.25, 0, TAU);
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.ellipse(-s * 0.34, 0, s * 0.34, s * 0.46, 0, 0, TAU);
+    ctx.fillStyle = c.belly;
     ctx.fill();
+    ctx.restore();
 
-    var eyes = [-1, 1];
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.2;
+    ctx.beginPath();
+    ctx.ellipse(s * 0.42, -s * 0.38, s * 0.3, s * 0.13, -0.22, 0, TAU);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fill();
+    ctx.restore();
+
+    /* Felt-black face: two plain ovals and a small stitched smile. */
+    ctx.fillStyle = c.ink;
     for (var e = 0; e < 2; e++) {
-      var ey = eyes[e] * s * 0.36;
+      var ey = (e === 0 ? -1 : 1) * s * 0.4;
       ctx.beginPath();
-      ctx.arc(-s * 0.1, ey, s * 0.2, 0, TAU);
-      ctx.fillStyle = c.eye;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(-s * 0.05, ey, s * 0.105, 0, TAU);
-      ctx.fillStyle = c.pupil;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(-s * 0.02, ey - s * 0.05, s * 0.035, 0, TAU);
-      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.ellipse(s * 0.2, ey, s * 0.13, s * 0.17, 0, 0, TAU);
       ctx.fill();
     }
+    ctx.beginPath();
+    ctx.moveTo(s * 0.12, -s * 0.15);
+    ctx.quadraticCurveTo(-s * 0.04, 0, s * 0.12, s * 0.15);
+    ctx.strokeStyle = c.ink;
+    ctx.lineWidth = s * 0.055;
+    ctx.stroke();
 
     ctx.restore();
     ctx.globalAlpha = 1;
