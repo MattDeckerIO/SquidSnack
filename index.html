@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#03141F">
-<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark and the purple squids.">
+<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark and the jellyfish.">
 <style>[hidden]{display:none !important;}</style>
 <title>Squid Snack</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -136,7 +136,7 @@
 
   <div class="veil" id="titleVeil">
     <h1>Squid Snack</h1>
-    <p>Drag your finger to swim. Eat the glowing fish. Dodge the shark and the purple squids. Catch a shrimp for an extra heart.</p>
+    <p>Drag your finger to swim. Eat the glowing fish. Dodge the shark and the jellyfish. Catch a shrimp for an extra heart.</p>
     <div class="cue">Touch to start</div>
   </div>
 
@@ -184,7 +184,7 @@
   var state = "title";
   var score = 0, lives = 3, best = 0;
   var time = 0;
-  var squid, sharks = [], shrimp = null, foods = [], drifters = [], bubbles = [], sparks = [];
+  var squid, sharks = [], shrimp = null, foods = [], jellies = [], bubbles = [], sparks = [];
   var nextShrimpAt = 10;
   var lastHitBy = "shark";
 
@@ -194,11 +194,14 @@
     arm: "#FF87A4", armEdge: "#E2547C",
     eye: "#FFF6F8", pupil: "#14202B"
   };
-  var THEM = {
-    top: "#C0A8F5", mid: "#9270E2", low: "#5C3FA8",
-    fin: "rgba(192,168,245,0.9)",
-    arm: "#AD8FEE", armEdge: "#7A58C8",
-    eye: "#F4EEFF", pupil: "#1B1630"
+  var JELLY = {
+    bellTop: "rgba(214,192,255,0.92)",
+    bellMid: "rgba(163,126,238,0.72)",
+    bellLow: "rgba(112,76,190,0.50)",
+    rim: "rgba(235,222,255,0.9)",
+    arm: "rgba(186,154,246,0.85)",
+    tentacle: "rgba(170,136,238,0.62)",
+    glow: "146,112,226"
   };
   var pointer = { down: false, coast: 0, x: 0, y: 0 };
   var keys = Object.create(null);
@@ -222,7 +225,7 @@
     if (squid) { squid.size = U * 0.05; }
     for (var k = 0; k < sharks.length; k++) { sharks[k].size = U * 0.082; }
     for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
-    for (var j = 0; j < drifters.length; j++) { drifters[j].size = U * 0.046; }
+    for (var j = 0; j < jellies.length; j++) { jellies[j].size = jellies[j].sizeF * U * 0.05; }
     if (shrimp) { shrimp.size = U * 0.042; }
     if (squid) updateHearts(false);
   }
@@ -276,12 +279,14 @@
   }
 
   /* Purple squids: one for every perfect square of fish eaten. */
-  function drifterTarget() {
+  function jellyTarget() {
     return Math.floor(Math.sqrt(score));
   }
 
-  function spawnDrifter() {
-    var size = U * 0.046;
+  function spawnJelly() {
+    /* Half the player's size up to the same size, never bigger. */
+    var sizeF = rand(0.5, 1);
+    var size = sizeF * U * 0.05;
     var edge = Math.floor(Math.random() * 4);
     var x, y;
     if (edge === 0) { x = rand(size, W - size); y = -size * 2; }
@@ -291,12 +296,13 @@
 
     var toward = Math.atan2(H * 0.5 - y, W * 0.5 - x) + rand(-0.6, 0.6);
     var d = {
-      x: x, y: y, size: size,
+      x: x, y: y, size: size, sizeF: sizeF,
       vx: Math.cos(toward) * U * 0.16,
       vy: Math.sin(toward) * U * 0.16,
       tvx: Math.cos(toward) * U * 0.16,
       tvy: Math.sin(toward) * U * 0.16,
       angle: toward, wig: rand(0, TAU), timer: rand(0.5, 1.2),
+      pulse: rand(2.6, 3.8), tilt: 0,
       entering: true
     };
     return d;
@@ -316,12 +322,12 @@
     d.tvy = Math.sin(a) * sp;
   }
 
-  function updateDrifters(dt) {
-    while (drifters.length > drifterTarget()) drifters.pop();
-    while (drifters.length < drifterTarget()) drifters.push(spawnDrifter());
+  function updateJellies(dt) {
+    while (jellies.length > jellyTarget()) jellies.pop();
+    while (jellies.length < jellyTarget()) jellies.push(spawnJelly());
 
-    for (var i = 0; i < drifters.length; i++) {
-      var d = drifters[i];
+    for (var i = 0; i < jellies.length; i++) {
+      var d = jellies[i];
       d.timer -= dt;
       if (d.timer <= 0) { reroll(d); d.entering = false; }
 
@@ -343,20 +349,19 @@
       }
 
       var sp2 = Math.hypot(d.vx, d.vy);
-      if (sp2 > U * 0.03) {
-        d.angle += wrapAngle(Math.atan2(d.vy, d.vx) - d.angle) * Math.min(1, dt * 9);
-      }
-      d.wig += dt * (2.2 + sp2 / (U * 0.1));
+      var wantTilt = Math.max(-0.55, Math.min(0.55, d.vx / (U * 0.55)));
+      d.tilt += (wantTilt - d.tilt) * Math.min(1, dt * 3.5);
+      d.wig += dt * (d.pulse + sp2 / (U * 0.14));
 
       if (squid.inv <= 0 && !d.entering &&
           Math.hypot(d.x - squid.x, d.y - squid.y) < d.size * 0.8 + squid.size * 0.78) {
-        burst(d.x, d.y, "170,140,240", 16);
+        burst(d.x, d.y, "186,154,246", 16);
         var flee = Math.atan2(d.y - squid.y, d.x - squid.x);
         d.tvx = Math.cos(flee) * U * 0.8;
         d.tvy = Math.sin(flee) * U * 0.8;
         d.vx = d.tvx; d.vy = d.tvy;
         d.timer = 0.6;
-        hitHeart(d.x, d.y, "drifter");
+        hitHeart(d.x, d.y, "jelly");
         if (lives <= 0) return;
       }
     }
@@ -441,7 +446,7 @@
     };
     sharks = [makeShark(1.8)];
     foods = [];
-    drifters = [];
+    jellies = [];
     sparks = [];
     shrimp = null;
     nextShrimpAt = 10;
@@ -545,7 +550,7 @@
     pointer.down = false;
     pointer.coast = 0;
     if (score > best) { best = score; saveBest(best); }
-    overWhyEl.textContent = lastHitBy === "drifter" ? "A purple squid got you." : "The shark got you.";
+    overWhyEl.textContent = lastHitBy === "jelly" ? "A jellyfish got you." : "The shark got you.";
     finalScoreEl.textContent = String(score);
     bestLineEl.textContent = "Best " + best;
     overVeil.hidden = false;
@@ -784,7 +789,7 @@
     while (foods.length < foodTarget()) foods.push(spawnFood());
 
     updateShrimp(dt);
-    updateDrifters(dt);
+    updateJellies(dt);
   }
 
   /* ---------- draw ---------- */
@@ -1088,21 +1093,104 @@
     drawSquidShape(squid.x, squid.y, squid.angle, squid.size, flicker, squid.wig, speed, YOU);
   }
 
-  function drawDrifters() {
-    for (var i = 0; i < drifters.length; i++) {
-      var d = drifters[i];
-      var speed = Math.hypot(d.vx, d.vy) / (U * 0.95);
-      ctx.save();
-      var gg = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.size * 2.4);
-      gg.addColorStop(0, "rgba(146,112,226,0.26)");
-      gg.addColorStop(1, "rgba(146,112,226,0)");
-      ctx.fillStyle = gg;
+  function drawJellies() {
+    for (var i = 0; i < jellies.length; i++) drawJelly(jellies[i]);
+  }
+
+  function drawJelly(d) {
+    var r = d.size;
+    var pulse = Math.sin(d.wig);
+    var bw = r * (1 + pulse * 0.17);
+    var bh = r * (0.92 - pulse * 0.22);
+
+    ctx.save();
+    var gg = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, r * 2.6);
+    gg.addColorStop(0, "rgba(" + JELLY.glow + ",0.24)");
+    gg.addColorStop(1, "rgba(" + JELLY.glow + ",0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, r * 2.6, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.tilt);
+    ctx.lineCap = "round";
+
+    var dragX = -(d.vx / (U * 0.9)) * r * 0.85;
+    var dragY = -(d.vy / (U * 0.9)) * r * 0.5;
+
+    ctx.strokeStyle = JELLY.tentacle;
+    for (var t = 0; t < 7; t++) {
+      var f = (t / 6) - 0.5;
+      var sx = f * bw * 1.5;
+      var len = r * (1.9 + (0.5 - Math.abs(f)) * 1.1);
+      ctx.lineWidth = Math.max(1, r * 0.055);
       ctx.beginPath();
-      ctx.arc(d.x, d.y, d.size * 2.4, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-      drawSquidShape(d.x, d.y, d.angle, d.size, 1, d.wig, speed, THEM);
+      ctx.moveTo(sx, bh * 0.2);
+      ctx.bezierCurveTo(
+        sx + Math.sin(d.wig * 1.4 + t) * r * 0.26 + dragX * 0.35,
+        bh * 0.2 + len * 0.4 + dragY * 0.3,
+        sx - Math.sin(d.wig * 1.1 + t * 1.3) * r * 0.3 + dragX * 0.75,
+        bh * 0.2 + len * 0.74 + dragY * 0.7,
+        sx + Math.sin(d.wig + t * 0.7) * r * 0.24 + dragX,
+        bh * 0.2 + len + dragY
+      );
+      ctx.stroke();
     }
+
+    ctx.strokeStyle = JELLY.arm;
+    ctx.lineWidth = Math.max(1.5, r * 0.15);
+    for (var a = 0; a < 4; a++) {
+      var af = (a / 3) - 0.5;
+      var ax = af * bw * 0.78;
+      var alen = r * (1.0 + (0.5 - Math.abs(af)) * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(ax, bh * 0.18);
+      ctx.quadraticCurveTo(
+        ax + Math.sin(d.wig * 1.2 + a * 1.5) * r * 0.2 + dragX * 0.4,
+        bh * 0.18 + alen * 0.6 + dragY * 0.4,
+        ax + Math.sin(d.wig + a) * r * 0.16 + dragX * 0.7,
+        bh * 0.18 + alen + dragY * 0.6
+      );
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(-bw, 0);
+    ctx.bezierCurveTo(-bw * 1.02, -bh * 1.62, bw * 1.02, -bh * 1.62, bw, 0);
+    var lobes = 4;
+    for (var k = 0; k < lobes; k++) {
+      var x0 = bw - (2 * bw) * (k / lobes);
+      var x1 = bw - (2 * bw) * ((k + 1) / lobes);
+      ctx.quadraticCurveTo((x0 + x1) / 2, bh * 0.4, x1, 0);
+    }
+    ctx.closePath();
+    var bgr = ctx.createLinearGradient(0, -bh * 1.5, 0, bh * 0.4);
+    bgr.addColorStop(0, JELLY.bellTop);
+    bgr.addColorStop(0.55, JELLY.bellMid);
+    bgr.addColorStop(1, JELLY.bellLow);
+    ctx.fillStyle = bgr;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(-bw * 0.92, -bh * 0.12);
+    ctx.bezierCurveTo(-bw * 0.94, -bh * 1.5, bw * 0.94, -bh * 1.5, bw * 0.92, -bh * 0.12);
+    ctx.strokeStyle = JELLY.rim;
+    ctx.lineWidth = Math.max(1, r * 0.075);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = JELLY.rim;
+    for (var g = 0; g < 3; g++) {
+      ctx.beginPath();
+      ctx.ellipse((g - 1) * bw * 0.4, -bh * 0.52, bw * 0.15, bh * 0.3, 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
   }
 
   function drawSquidShape(px, py, ang, s, alpha, wig, speed, c) {
@@ -1195,7 +1283,7 @@
     if (state === "playing" || state === "over") {
       for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
       if (shrimp) drawShrimp();
-      drawDrifters();
+      drawJellies();
       for (var k = 0; k < sharks.length; k++) {
         if (sharks[k].phase !== "wait") drawShark(sharks[k]);
       }
