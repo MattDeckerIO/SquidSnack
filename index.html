@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#03141F">
+<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark.">
+<style>[hidden]{display:none !important;}</style>
+<title>Squid Snack</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@700;800&display=swap">
+<style>
+  :root{
+    --abyss:#03141F;
+    --deep:#06293E;
+    --mid:#0B4A63;
+    --foam:#D9F1F7;
+    --foam-dim:#8FB8C6;
+    --squid:#FF6F91;
+    --snack:#FFD166;
+    --heart:#FF4D6D;
+    --heart-off:#274B5C;
+  }
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--abyss);
+    color:var(--foam);
+    font-family:"Nunito",system-ui,-apple-system,sans-serif;
+    overflow:hidden;
+    overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;
+  }
+  #stage{position:fixed;inset:0;touch-action:none;overflow:hidden;background:var(--abyss);}
+  #sea{position:absolute;inset:0;width:100%;height:100%;display:block;}
+
+  #hud{
+    position:absolute;left:0;right:0;top:0;
+    display:flex;align-items:flex-start;justify-content:space-between;
+    padding:calc(env(safe-area-inset-top,0px) + 20px) calc(env(safe-area-inset-right,0px) + 22px) 0 calc(env(safe-area-inset-left,0px) + 22px);
+    pointer-events:none;
+  }
+  #hearts{display:flex;gap:8px;}
+  #hearts svg{width:38px;height:38px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));transition:transform .18s ease, opacity .18s ease;}
+  #hearts svg.gone{opacity:.32;transform:scale(.78);}
+  #hearts svg .fill{fill:var(--heart);}
+  #hearts svg.gone .fill{fill:var(--heart-off);}
+
+  #score{
+    display:flex;align-items:center;gap:9px;
+    font-family:"Fredoka",system-ui,sans-serif;font-weight:600;
+    font-size:34px;line-height:1;font-variant-numeric:tabular-nums;
+    color:var(--snack);
+    text-shadow:0 2px 8px rgba(0,0,0,.5);
+  }
+  #score svg{width:36px;height:36px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));}
+
+  .veil{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:18px;text-align:center;
+    padding:0 24px;
+    background:radial-gradient(120% 90% at 50% 45%, rgba(3,20,31,.55), rgba(3,20,31,.92));
+    backdrop-filter:blur(2px);
+  }
+  .veil[hidden]{display:none !important;}
+  .veil h1{
+    margin:0;
+    font-family:"Fredoka",system-ui,sans-serif;font-weight:700;
+    font-size:clamp(42px,11vw,86px);line-height:.95;
+    color:var(--squid);
+    text-wrap:balance;
+    text-shadow:0 6px 24px rgba(255,111,145,.35);
+  }
+  .veil h2{
+    margin:0;
+    font-family:"Fredoka",system-ui,sans-serif;font-weight:600;
+    font-size:clamp(34px,9vw,64px);line-height:1;
+    color:var(--foam);
+  }
+  .veil p{margin:0;max-width:30ch;font-size:clamp(15px,3.6vw,19px);color:var(--foam-dim);line-height:1.5;}
+  .veil .big{
+    font-family:"Fredoka",system-ui,sans-serif;font-weight:700;
+    font-size:clamp(56px,16vw,120px);line-height:1;color:var(--snack);
+    font-variant-numeric:tabular-nums;
+  }
+  .veil .cue{
+    margin-top:6px;
+    font-family:"Fredoka",system-ui,sans-serif;font-weight:600;
+    font-size:clamp(17px,4.4vw,23px);
+    color:var(--foam);
+    border:2px solid rgba(217,241,247,.35);
+    border-radius:999px;
+    padding:11px 26px;
+    animation:pulse 1.8s ease-in-out infinite;
+  }
+  .veil .best{font-size:clamp(14px,3.4vw,17px);color:var(--foam-dim);letter-spacing:.06em;text-transform:uppercase;}
+  @keyframes pulse{0%,100%{opacity:.62;transform:scale(1);}50%{opacity:1;transform:scale(1.045);}}
+  @media (prefers-reduced-motion:reduce){.veil .cue{animation:none;opacity:1;}}
+
+  #flash{position:absolute;inset:0;background:var(--heart);opacity:0;pointer-events:none;}
+  #flash.hit{animation:hitflash .45s ease-out;}
+  @keyframes hitflash{0%{opacity:.42;}100%{opacity:0;}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="sea"></canvas>
+  <div id="flash"></div>
+
+  <div id="hud">
+    <div id="hearts" aria-label="Lives"></div>
+    <div id="score">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2.4 12c3.2-5.4 8.6-6.8 13-4.6l5.1-3.4-1.6 5.4a5 5 0 0 1 0 5.2l1.6 5.4-5.1-3.4C11 18.8 5.6 17.4 2.4 12z" fill="#FFD166"/>
+        <circle cx="15.4" cy="10.2" r="1.15" fill="#03141F"/>
+      </svg>
+      <span id="scoreval">0</span>
+    </div>
+  </div>
+
+  <div class="veil" id="titleVeil">
+    <h1>Squid Snack</h1>
+    <p>Drag your finger to swim. Eat the glowing fish. Stay away from the shark.</p>
+    <div class="cue">Touch to start</div>
+  </div>
+
+  <div class="veil" id="overVeil" hidden>
+    <h2>Chomp!</h2>
+    <p>The shark got you.</p>
+    <div class="big" id="finalScore">0</div>
+    <p class="best" id="bestLine">Best 0</p>
+    <div class="cue">Touch to swim again</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var cv = document.getElementById("sea");
+  var ctx = cv.getContext("2d");
+  var stage = document.getElementById("stage");
+  var heartsEl = document.getElementById("hearts");
+  var scoreEl = document.getElementById("scoreval");
+  var titleVeil = document.getElementById("titleVeil");
+  var overVeil = document.getElementById("overVeil");
+  var finalScoreEl = document.getElementById("finalScore");
+  var bestLineEl = document.getElementById("bestLine");
+  var flashEl = document.getElementById("flash");
+
+  var W = 1, H = 1, U = 1, DPR = 1;
+  var TAU = Math.PI * 2;
+
+  var HEART_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path class="fill" d="M12 21.2C7.2 18.1 2.6 14.6 2.6 10.3A4.9 4.9 0 0 1 12 8.1a4.9 4.9 0 0 1 9.4 2.2c0 4.3-4.6 7.8-9.4 10.9z"/>' +
+    '</svg>';
+
+  var state = "title";
+  var score = 0, lives = 3, best = 0;
+  var time = 0;
+  var squid, shark, foods = [], bubbles = [], sparks = [];
+  var pointer = { down: false, coast: 0, x: 0, y: 0 };
+  var keys = Object.create(null);
+
+  function loadBest() {
+    try { return parseInt(localStorage.getItem("squidSnackBest") || "0", 10) || 0; }
+    catch (e) { return 0; }
+  }
+  function saveBest(v) {
+    try { localStorage.setItem("squidSnackBest", String(v)); } catch (e) {}
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = stage.clientWidth || window.innerWidth;
+    H = stage.clientHeight || window.innerHeight;
+    U = Math.min(W, H);
+    cv.width = Math.round(W * DPR);
+    cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (squid) { squid.size = U * 0.05; }
+    if (shark) { shark.size = U * 0.082; }
+    for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
+  }
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function wrapAngle(a) {
+    while (a > Math.PI) a -= TAU;
+    while (a < -Math.PI) a += TAU;
+    return a;
+  }
+
+  function makeBubbles() {
+    bubbles = [];
+    var n = 34;
+    for (var i = 0; i < n; i++) {
+      bubbles.push({
+        x: rand(0, W), y: rand(0, H),
+        r: rand(U * 0.004, U * 0.016),
+        sp: rand(U * 0.02, U * 0.09),
+        drift: rand(-0.5, 0.5),
+        a: rand(0.08, 0.3)
+      });
+    }
+  }
+
+  function spawnFood() {
+    var r = U * 0.024;
+    var x, y, tries = 0;
+    do {
+      x = rand(r * 3, W - r * 3);
+      y = rand(U * 0.16, H - r * 3);
+      tries++;
+    } while (tries < 24 && (
+      Math.hypot(x - squid.x, y - squid.y) < U * 0.28 ||
+      Math.hypot(x - shark.x, y - shark.y) < U * 0.22
+    ));
+    return {
+      x: x, y: y, r: r,
+      dir: rand(0, TAU),
+      turn: rand(-0.7, 0.7),
+      sp: rand(U * 0.02, U * 0.06),
+      phase: rand(0, TAU),
+      born: time
+    };
+  }
+
+  function foodTarget() {
+    return Math.min(9, 4 + Math.floor(score / 10));
+  }
+
+  function reset() {
+    time = 0;
+    score = 0;
+    lives = 3;
+    squid = {
+      x: W * 0.5, y: H * 0.62,
+      vx: 0, vy: 0,
+      angle: -Math.PI / 2,
+      size: U * 0.05,
+      inv: 1.2,
+      wig: 0
+    };
+    shark = {
+      x: W * 0.5, y: -U * 0.3,
+      angle: Math.PI / 2,
+      size: U * 0.082,
+      stun: 1.6,
+      wag: 0
+    };
+    foods = [];
+    sparks = [];
+    for (var i = 0; i < foodTarget(); i++) foods.push(spawnFood());
+    makeBubbles();
+    pointer.down = false;
+    pointer.coast = 0;
+    pointer.x = squid.x;
+    pointer.y = squid.y;
+    paintHud();
+  }
+
+  function paintHud() {
+    var html = "";
+    for (var i = 0; i < 3; i++) html += HEART_SVG;
+    heartsEl.innerHTML = html;
+    var svgs = heartsEl.querySelectorAll("svg");
+    for (var j = 0; j < svgs.length; j++) {
+      if (j >= lives) svgs[j].classList.add("gone");
+    }
+    scoreEl.textContent = String(score);
+  }
+
+  function updateHearts() {
+    var svgs = heartsEl.querySelectorAll("svg");
+    for (var j = 0; j < svgs.length; j++) {
+      svgs[j].classList.toggle("gone", j >= lives);
+    }
+  }
+
+  /* ---------- input ---------- */
+
+  function pointAt(e) {
+    var rect = cv.getBoundingClientRect();
+    pointer.x = e.clientX - rect.left;
+    pointer.y = e.clientY - rect.top;
+  }
+
+  stage.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    if (state === "title") { startGame(); return; }
+    if (state === "over") { startGame(); return; }
+    pointer.down = true;
+    pointer.coast = 0;
+    pointAt(e);
+    if (stage.setPointerCapture) { try { stage.setPointerCapture(e.pointerId); } catch (err) {} }
+  }, { passive: false });
+
+  stage.addEventListener("pointermove", function (e) {
+    if (!pointer.down) return;
+    e.preventDefault();
+    pointAt(e);
+  }, { passive: false });
+
+  function release() {
+    if (pointer.down) pointer.coast = 1.6;
+    pointer.down = false;
+  }
+  stage.addEventListener("pointerup", release);
+  stage.addEventListener("pointercancel", release);
+  stage.addEventListener("pointerleave", release);
+
+  stage.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+  stage.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  window.addEventListener("keydown", function (e) {
+    if (e.key === " " || e.key === "Enter") {
+      if (state !== "playing") { startGame(); e.preventDefault(); return; }
+    }
+    keys[e.key] = true;
+    if (e.key.indexOf("Arrow") === 0) e.preventDefault();
+  });
+  window.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 260); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { pointer.down = false; pointer.coast = 0; }
+    last = 0;
+  });
+
+  function startGame() {
+    resize();
+    reset();
+    state = "playing";
+    titleVeil.hidden = true;
+    overVeil.hidden = true;
+  }
+
+  function endGame() {
+    state = "over";
+    pointer.down = false;
+    pointer.coast = 0;
+    if (score > best) { best = score; saveBest(best); }
+    finalScoreEl.textContent = String(score);
+    bestLineEl.textContent = "Best " + best;
+    overVeil.hidden = false;
+  }
+
+  /* ---------- update ---------- */
+
+  function hitHeart() {
+    lives--;
+    updateHearts();
+    squid.inv = 1.7;
+    shark.stun = 1.35;
+    var away = Math.atan2(shark.y - squid.y, shark.x - squid.x);
+    shark.x += Math.cos(away) * U * 0.22;
+    shark.y += Math.sin(away) * U * 0.22;
+    squid.vx = -Math.cos(away) * U * 0.55;
+    squid.vy = -Math.sin(away) * U * 0.55;
+    flashEl.classList.remove("hit");
+    void flashEl.offsetWidth;
+    flashEl.classList.add("hit");
+    if (lives <= 0) endGame();
+  }
+
+  function burst(x, y, color, n) {
+    for (var i = 0; i < n; i++) {
+      var a = rand(0, TAU), s = rand(U * 0.08, U * 0.3);
+      sparks.push({
+        x: x, y: y,
+        vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: rand(0.35, 0.7), age: 0,
+        r: rand(U * 0.004, U * 0.011),
+        c: color
+      });
+    }
+  }
+
+  function update(dt) {
+    time += dt;
+
+    for (var b = 0; b < bubbles.length; b++) {
+      var bu = bubbles[b];
+      bu.y -= bu.sp * dt;
+      bu.x += Math.sin(time * 1.4 + bu.y * 0.02) * bu.drift;
+      if (bu.y < -bu.r * 2) { bu.y = H + bu.r * 2; bu.x = rand(0, W); }
+    }
+
+    for (var s = sparks.length - 1; s >= 0; s--) {
+      var sp = sparks[s];
+      sp.age += dt;
+      if (sp.age >= sp.life) { sparks.splice(s, 1); continue; }
+      sp.x += sp.vx * dt; sp.y += sp.vy * dt;
+      sp.vx *= 0.94; sp.vy *= 0.94;
+    }
+
+    if (state !== "playing") return;
+
+    /* --- squid --- */
+    var accel = U * 5.2;
+    var maxSpeed = U * 0.95;
+    var ax = 0, ay = 0;
+
+    if (pointer.coast > 0) pointer.coast -= dt;
+    if (pointer.down || pointer.coast > 0) {
+      var dx = pointer.x - squid.x, dy = pointer.y - squid.y;
+      var d = Math.hypot(dx, dy);
+      if (!pointer.down && d < U * 0.035) pointer.coast = 0;
+      if (d > 1.5) {
+        var pull = Math.min(d / (U * 0.10), 1);
+        ax = (dx / d) * accel * pull;
+        ay = (dy / d) * accel * pull;
+      }
+    }
+    var kx = 0, ky = 0;
+    if (keys.ArrowLeft || keys.a) kx -= 1;
+    if (keys.ArrowRight || keys.d) kx += 1;
+    if (keys.ArrowUp || keys.w) ky -= 1;
+    if (keys.ArrowDown || keys.s) ky += 1;
+    if (kx || ky) {
+      var kl = Math.hypot(kx, ky);
+      ax = (kx / kl) * accel;
+      ay = (ky / kl) * accel;
+    }
+
+    squid.vx += ax * dt;
+    squid.vy += ay * dt;
+    var damp = Math.pow(0.0016, dt);
+    squid.vx *= damp;
+    squid.vy *= damp;
+
+    var sv = Math.hypot(squid.vx, squid.vy);
+    if (sv > maxSpeed) { squid.vx = squid.vx / sv * maxSpeed; squid.vy = squid.vy / sv * maxSpeed; sv = maxSpeed; }
+
+    squid.x += squid.vx * dt;
+    squid.y += squid.vy * dt;
+
+    var pad = squid.size * 0.9;
+    if (squid.x < pad) { squid.x = pad; squid.vx *= -0.35; }
+    if (squid.x > W - pad) { squid.x = W - pad; squid.vx *= -0.35; }
+    if (squid.y < pad) { squid.y = pad; squid.vy *= -0.35; }
+    if (squid.y > H - pad) { squid.y = H - pad; squid.vy *= -0.35; }
+
+    if (sv > U * 0.06) {
+      var want = Math.atan2(squid.vy, squid.vx);
+      squid.angle += wrapAngle(want - squid.angle) * Math.min(1, dt * 11);
+    }
+    squid.wig += dt * (3 + sv / (U * 0.12));
+    if (squid.inv > 0) squid.inv -= dt;
+
+    /* --- shark --- */
+    var sharkSpeed = Math.min(U * 0.66, U * (0.30 + score * 0.0055));
+    var turnRate = 2.35;
+    if (shark.stun > 0) {
+      shark.stun -= dt;
+      shark.x += Math.cos(shark.angle) * sharkSpeed * 0.28 * dt;
+      shark.y += Math.sin(shark.angle) * sharkSpeed * 0.28 * dt;
+    } else {
+      var want2 = Math.atan2(squid.y - shark.y, squid.x - shark.x);
+      var diff = wrapAngle(want2 - shark.angle);
+      var step = turnRate * dt;
+      shark.angle += Math.max(-step, Math.min(step, diff));
+      shark.x += Math.cos(shark.angle) * sharkSpeed * dt;
+      shark.y += Math.sin(shark.angle) * sharkSpeed * dt;
+    }
+    shark.wag += dt * (5 + sharkSpeed / (U * 0.1));
+
+    var sp2 = shark.size * 1.5;
+    if (shark.x < -sp2) shark.x = -sp2;
+    if (shark.x > W + sp2) shark.x = W + sp2;
+    if (shark.y < -sp2) shark.y = -sp2;
+    if (shark.y > H + sp2) shark.y = H + sp2;
+
+    if (squid.inv <= 0 && shark.stun <= 0) {
+      var noseX = shark.x + Math.cos(shark.angle) * shark.size * 0.75;
+      var noseY = shark.y + Math.sin(shark.angle) * shark.size * 0.75;
+      if (Math.hypot(noseX - squid.x, noseY - squid.y) < shark.size * 0.62 + squid.size * 0.7) {
+        burst(squid.x, squid.y, "255,109,145", 16);
+        hitHeart();
+      }
+    }
+
+    /* --- food --- */
+    for (var f = foods.length - 1; f >= 0; f--) {
+      var fo = foods[f];
+      fo.dir += fo.turn * dt;
+      fo.x += Math.cos(fo.dir) * fo.sp * dt;
+      fo.y += Math.sin(fo.dir) * fo.sp * dt + Math.sin(time * 2.4 + fo.phase) * U * 0.02 * dt;
+      var fp = fo.r * 2;
+      if (fo.x < fp || fo.x > W - fp) { fo.dir = Math.PI - fo.dir; fo.x = Math.max(fp, Math.min(W - fp, fo.x)); }
+      if (fo.y < U * 0.14 || fo.y > H - fp) { fo.dir = -fo.dir; fo.y = Math.max(U * 0.14, Math.min(H - fp, fo.y)); }
+
+      if (Math.hypot(fo.x - squid.x, fo.y - squid.y) < fo.r + squid.size * 0.95) {
+        burst(fo.x, fo.y, "255,209,102", 12);
+        foods.splice(f, 1);
+        score++;
+        scoreEl.textContent = String(score);
+      }
+    }
+    while (foods.length < foodTarget()) foods.push(spawnFood());
+  }
+
+  /* ---------- draw ---------- */
+
+  function drawBackground() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0E5C78");
+    g.addColorStop(0.42, "#084A65");
+    g.addColorStop(1, "#03141F");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (var i = 0; i < 4; i++) {
+      var baseX = W * (0.12 + i * 0.26);
+      var sway = Math.sin(time * 0.24 + i * 1.7) * W * 0.05;
+      var w = U * (0.12 + i * 0.03);
+      ctx.beginPath();
+      ctx.moveTo(baseX + sway - w * 0.4, -10);
+      ctx.lineTo(baseX + sway + w * 0.4, -10);
+      ctx.lineTo(baseX + sway * 2.1 + w * 1.5, H * 0.95);
+      ctx.lineTo(baseX + sway * 2.1 - w * 1.5, H * 0.95);
+      ctx.closePath();
+      var rg = ctx.createLinearGradient(0, 0, 0, H * 0.95);
+      rg.addColorStop(0, "rgba(170,235,255,0.085)");
+      rg.addColorStop(1, "rgba(170,235,255,0)");
+      ctx.fillStyle = rg;
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.save();
+    for (var b = 0; b < bubbles.length; b++) {
+      var bu = bubbles[b];
+      ctx.beginPath();
+      ctx.arc(bu.x, bu.y, bu.r, 0, TAU);
+      ctx.strokeStyle = "rgba(210,244,255," + bu.a + ")";
+      ctx.lineWidth = Math.max(1, bu.r * 0.28);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    var vg = ctx.createRadialGradient(W / 2, H * 0.45, U * 0.2, W / 2, H * 0.5, Math.max(W, H) * 0.78);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.42)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawFood(fo) {
+    var wob = Math.sin(time * 6 + fo.phase);
+    ctx.save();
+    ctx.translate(fo.x, fo.y);
+    ctx.rotate(fo.dir + Math.PI);
+
+    var gg = ctx.createRadialGradient(0, 0, 0, 0, 0, fo.r * 3.6);
+    gg.addColorStop(0, "rgba(255,209,102,0.42)");
+    gg.addColorStop(1, "rgba(255,209,102,0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(0, 0, fo.r * 3.6, 0, TAU);
+    ctx.fill();
+
+    ctx.fillStyle = "#FFD166";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, fo.r, fo.r * 0.64, 0, 0, TAU);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(fo.r * 0.72, 0);
+    ctx.lineTo(fo.r * 1.75, -fo.r * 0.62 + wob * fo.r * 0.24);
+    ctx.lineTo(fo.r * 1.75, fo.r * 0.62 + wob * fo.r * 0.24);
+    ctx.closePath();
+    ctx.fillStyle = "#F4A261";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(-fo.r * 0.48, -fo.r * 0.14, fo.r * 0.2, 0, TAU);
+    ctx.fillStyle = "#03141F";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawShark() {
+    var s = shark.size;
+    ctx.save();
+    ctx.translate(shark.x, shark.y);
+    ctx.rotate(shark.angle);
+
+    var tail = Math.sin(shark.wag) * 0.34;
+
+    ctx.save();
+    ctx.translate(-s * 1.05, 0);
+    ctx.rotate(tail);
+    ctx.beginPath();
+    ctx.moveTo(s * 0.18, 0);
+    ctx.lineTo(-s * 0.55, -s * 0.85);
+    ctx.lineTo(-s * 0.22, 0);
+    ctx.lineTo(-s * 0.5, s * 0.6);
+    ctx.closePath();
+    ctx.fillStyle = "#6E8998";
+    ctx.fill();
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.05, -s * 0.36);
+    ctx.lineTo(-s * 0.18, -s * 1.02);
+    ctx.lineTo(-s * 0.52, -s * 0.28);
+    ctx.closePath();
+    ctx.fillStyle = "#6E8998";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(s * 0.1, s * 0.3);
+    ctx.lineTo(-s * 0.3, s * 0.92);
+    ctx.lineTo(-s * 0.36, s * 0.24);
+    ctx.closePath();
+    ctx.fillStyle = "#5E7A89";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(s * 1.32, 0);
+    ctx.bezierCurveTo(s * 0.7, -s * 0.56, -s * 0.2, -s * 0.6, -s * 1.02, -s * 0.2);
+    ctx.bezierCurveTo(-s * 0.6, 0, -s * 0.6, 0, -s * 1.02, s * 0.2);
+    ctx.bezierCurveTo(-s * 0.2, s * 0.6, s * 0.7, s * 0.5, s * 1.32, 0);
+    ctx.closePath();
+    var bg = ctx.createLinearGradient(0, -s * 0.6, 0, s * 0.6);
+    bg.addColorStop(0, "#9FB6C4");
+    bg.addColorStop(0.6, "#7E97A6");
+    bg.addColorStop(1, "#DCE8EE");
+    ctx.fillStyle = bg;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(s * 1.24, s * 0.06);
+    ctx.quadraticCurveTo(s * 0.72, s * 0.34, s * 0.3, s * 0.22);
+    ctx.strokeStyle = "rgba(20,40,52,0.75)";
+    ctx.lineWidth = Math.max(1.4, s * 0.06);
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(40,66,80,0.45)";
+    ctx.lineWidth = Math.max(1, s * 0.045);
+    for (var g = 0; g < 3; g++) {
+      var gx = s * (0.42 - g * 0.15);
+      ctx.beginPath();
+      ctx.moveTo(gx, -s * 0.24);
+      ctx.lineTo(gx - s * 0.05, s * 0.06);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(s * 0.82, -s * 0.2, s * 0.1, 0, TAU);
+    ctx.fillStyle = "#12252E";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(s * 0.85, -s * 0.23, s * 0.035, 0, TAU);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawSquid() {
+    var s = squid.size;
+    var flicker = squid.inv > 0 ? (Math.sin(time * 26) > -0.1 ? 1 : 0.24) : 1;
+
+    ctx.save();
+    ctx.globalAlpha = flicker;
+    ctx.translate(squid.x, squid.y);
+    ctx.rotate(squid.angle);
+
+    var speed = Math.hypot(squid.vx, squid.vy) / (U * 0.95);
+
+    ctx.lineCap = "round";
+    for (var i = 0; i < 8; i++) {
+      var t = (i / 7) - 0.5;
+      var baseY = t * s * 0.72;
+      var phase = squid.wig + i * 0.7;
+      var len = s * (1.25 + Math.abs(t) * 0.35) * (1 - speed * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.42, baseY);
+      ctx.quadraticCurveTo(
+        -s * 0.42 - len * 0.55, baseY + Math.sin(phase) * s * 0.26,
+        -s * 0.42 - len, baseY + Math.sin(phase + 1.1) * s * 0.44
+      );
+      ctx.strokeStyle = (i === 0 || i === 7) ? "#E2547C" : "#FF87A4";
+      ctx.lineWidth = s * (i === 0 || i === 7 ? 0.17 : 0.13);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(s * 0.62, -s * 0.5);
+    ctx.quadraticCurveTo(s * 1.12, -s * 0.9, s * 1.02, -s * 0.28);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(255,150,178,0.9)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(s * 0.62, s * 0.5);
+    ctx.quadraticCurveTo(s * 1.12, s * 0.9, s * 1.02, s * 0.28);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(s * 1.16, 0);
+    ctx.bezierCurveTo(s * 0.9, -s * 0.66, s * 0.1, -s * 0.72, -s * 0.34, -s * 0.5);
+    ctx.bezierCurveTo(-s * 0.62, -s * 0.3, -s * 0.62, s * 0.3, -s * 0.34, s * 0.5);
+    ctx.bezierCurveTo(s * 0.1, s * 0.72, s * 0.9, s * 0.66, s * 1.16, 0);
+    ctx.closePath();
+    var mg = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
+    mg.addColorStop(0, "#FF9FB8");
+    mg.addColorStop(0.55, "#FF6F91");
+    mg.addColorStop(1, "#D64672");
+    ctx.fillStyle = mg;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(s * 0.42, -s * 0.24, s * 0.34, s * 0.12, -0.25, 0, TAU);
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fill();
+
+    var eyes = [-1, 1];
+    for (var e = 0; e < 2; e++) {
+      var ey = eyes[e] * s * 0.36;
+      ctx.beginPath();
+      ctx.arc(-s * 0.1, ey, s * 0.2, 0, TAU);
+      ctx.fillStyle = "#FFF6F8";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-s * 0.05, ey, s * 0.105, 0, TAU);
+      ctx.fillStyle = "#14202B";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-s * 0.02, ey - s * 0.05, s * 0.035, 0, TAU);
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fill();
+    }
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSparks() {
+    for (var i = 0; i < sparks.length; i++) {
+      var sp = sparks[i];
+      var k = 1 - sp.age / sp.life;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, sp.r * (0.5 + k), 0, TAU);
+      ctx.fillStyle = "rgba(" + sp.c + "," + (k * 0.9) + ")";
+      ctx.fill();
+    }
+  }
+
+  function render() {
+    drawBackground();
+    if (state === "playing" || state === "over") {
+      for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
+      drawShark();
+      drawSquid();
+    }
+    drawSparks();
+  }
+
+  /* ---------- loop ---------- */
+
+  var last = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    var dt = (ts - last) / 1000;
+    last = ts;
+    if (dt > 0.05) dt = 0.05;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function boot(saved) {
+    best = (saved && typeof saved.best === "number") ? saved.best : loadBest();
+    resize();
+    reset();
+    state = "title";
+    titleVeil.hidden = false;
+    overVeil.hidden = true;
+    requestAnimationFrame(frame);
+  }
+
+  try {
+    if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
+      window.claude.hot.snapshot(function () { return { best: best }; });
+    }
+  } catch (e) {}
+
+  if (window.claude && window.claude.hot && window.claude.hot.ready) {
+    window.claude.hot.ready(boot);
+  } else {
+    boot((window.claude && window.claude.hot && window.claude.hot.data) || {});
+  }
+})();
+</script>
+</body>
+</html>
