@@ -174,6 +174,7 @@
     '</svg>';
 
   var MAX_LIVES = 32, HEARTS_PER_ROW = 16;
+  var SQUID_R = 0.042;  /* squid radius as a fraction of the short screen edge */
 
   /* Difficulty steps, by fish eaten. */
   var NO_WARNING_AT = 50;    /* shark stops showing the warning ring */
@@ -197,7 +198,8 @@
     finLip: "#D22E3A",
     arm: "#B81C29",
     armInner: "#D2303C",
-    belly: "#F2ABA6",
+    belly: "#F7BDB7",
+    blush: "#FF8A93",
     ink: "#160A0D"
   };
 
@@ -229,10 +231,10 @@
     cv.width = Math.round(W * DPR);
     cv.height = Math.round(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    if (squid) { squid.size = U * 0.05; }
+    if (squid) { squid.size = U * SQUID_R; }
     for (var k = 0; k < sharks.length; k++) { sharks[k].size = U * 0.082; }
     for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
-    for (var j = 0; j < jellies.length; j++) { jellies[j].size = jellies[j].sizeF * U * 0.05; }
+    for (var j = 0; j < jellies.length; j++) { jellies[j].size = jellies[j].sizeF * U * SQUID_R; }
     if (shrimp) { shrimp.size = U * 0.042; }
     if (squid) updateHearts(false);
   }
@@ -293,7 +295,7 @@
   function spawnJelly() {
     /* Half the player's size up to the same size, never bigger. */
     var sizeF = rand(0.5, 1);
-    var size = sizeF * U * 0.05;
+    var size = sizeF * U * SQUID_R;
     var edge = Math.floor(Math.random() * 4);
     var x, y;
     if (edge === 0) { x = rand(size, W - size); y = -size * 2; }
@@ -447,7 +449,7 @@
       x: W * 0.5, y: H * 0.62,
       vx: 0, vy: 0,
       angle: -Math.PI / 2,
-      size: U * 0.05,
+      size: U * SQUID_R,
       inv: 1.2,
       wig: 0
     };
@@ -1208,22 +1210,24 @@
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    /* Eight stubby arms, splayed out behind the mantle. */
-    for (var i = 0; i < 8; i++) {
-      var t = (i / 7) - 0.5;
-      var baseY = t * s * 1.1;
-      var baseX = -s * (0.58 - Math.abs(t) * 0.3);
-      var len = s * (1.0 - Math.abs(t) * 0.2) * (1 - speed * 0.16);
-      var spread = t * s * 0.6;
-      var swing = Math.sin(wig + i * 0.78) * s * 0.17;
+    /* Ten legs: eight stubby arms plus a longer outer pair. */
+    var LEGS = 10;
+    for (var i = 0; i < LEGS; i++) {
+      var t = (i / (LEGS - 1)) - 0.5;
+      var outer = (i === 0 || i === LEGS - 1);
+      var baseY = t * s * 1.04;
+      var baseX = -s * (0.56 - Math.abs(t) * 0.26);
+      var len = s * (0.86 - Math.abs(t) * 0.12) * (outer ? 1.32 : 1) * (1 - speed * 0.16);
+      var spread = t * s * (outer ? 0.78 : 0.56);
+      var swing = Math.sin(wig + i * 0.66) * s * (outer ? 0.2 : 0.14);
       ctx.beginPath();
       ctx.moveTo(baseX, baseY);
       ctx.quadraticCurveTo(
         baseX - len * 0.58, baseY + spread * 0.42 + swing * 0.45,
         baseX - len, baseY + spread + swing
       );
-      ctx.lineWidth = s * (0.27 - Math.abs(t) * 0.05);
-      ctx.strokeStyle = (i === 0 || i === 7) ? c.arm : c.armInner;
+      ctx.lineWidth = s * (outer ? 0.15 : 0.2 - Math.abs(t) * 0.02);
+      ctx.strokeStyle = outer ? c.arm : c.armInner;
       ctx.stroke();
     }
 
@@ -1246,11 +1250,11 @@
 
     /* Rounded plush mantle. */
     ctx.beginPath();
-    ctx.moveTo(s * 1.0, 0);
-    ctx.bezierCurveTo(s * 0.94, -s * 0.6, s * 0.34, -s * 0.9, -s * 0.16, -s * 0.84);
-    ctx.bezierCurveTo(-s * 0.7, -s * 0.76, -s * 0.84, -s * 0.34, -s * 0.84, 0);
-    ctx.bezierCurveTo(-s * 0.84, s * 0.34, -s * 0.7, s * 0.76, -s * 0.16, s * 0.84);
-    ctx.bezierCurveTo(s * 0.34, s * 0.9, s * 0.94, s * 0.6, s * 1.0, 0);
+    ctx.moveTo(s * 0.95, 0);
+    ctx.bezierCurveTo(s * 0.9, -s * 0.64, s * 0.3, -s * 0.92, -s * 0.2, -s * 0.86);
+    ctx.bezierCurveTo(-s * 0.74, -s * 0.8, -s * 0.88, -s * 0.36, -s * 0.88, 0);
+    ctx.bezierCurveTo(-s * 0.88, s * 0.36, -s * 0.74, s * 0.8, -s * 0.2, s * 0.86);
+    ctx.bezierCurveTo(s * 0.3, s * 0.92, s * 0.9, s * 0.64, s * 0.95, 0);
     ctx.closePath();
     var mg = ctx.createLinearGradient(0, -s * 0.9, 0, s * 0.9);
     mg.addColorStop(0, c.bodyTop);
@@ -1263,7 +1267,7 @@
     ctx.save();
     ctx.globalAlpha = alpha * 0.85;
     ctx.beginPath();
-    ctx.ellipse(-s * 0.34, 0, s * 0.34, s * 0.46, 0, 0, TAU);
+    ctx.ellipse(-s * 0.36, 0, s * 0.31, s * 0.44, 0, 0, TAU);
     ctx.fillStyle = c.belly;
     ctx.fill();
     ctx.restore();
@@ -1276,19 +1280,35 @@
     ctx.fill();
     ctx.restore();
 
-    /* Felt-black face: two plain ovals and a small stitched smile. */
-    ctx.fillStyle = c.ink;
-    for (var e = 0; e < 2; e++) {
-      var ey = (e === 0 ? -1 : 1) * s * 0.4;
+    /* Cheeks. */
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.42;
+    ctx.fillStyle = c.blush;
+    for (var b = 0; b < 2; b++) {
       ctx.beginPath();
-      ctx.ellipse(s * 0.2, ey, s * 0.13, s * 0.17, 0, 0, TAU);
+      ctx.ellipse(s * 0.03, (b === 0 ? -1 : 1) * s * 0.53, s * 0.1, s * 0.13, 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    /* Small felt-black eyes with a catchlight, and a little smile. */
+    for (var e = 0; e < 2; e++) {
+      var sgn = (e === 0 ? -1 : 1);
+      var ey = sgn * s * 0.3;
+      ctx.beginPath();
+      ctx.ellipse(s * 0.24, ey, s * 0.085, s * 0.105, 0, 0, TAU);
+      ctx.fillStyle = c.ink;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(s * 0.275, ey - sgn * s * 0.03, s * 0.032, 0, TAU);
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
       ctx.fill();
     }
     ctx.beginPath();
-    ctx.moveTo(s * 0.12, -s * 0.15);
-    ctx.quadraticCurveTo(-s * 0.04, 0, s * 0.12, s * 0.15);
+    ctx.moveTo(s * 0.19, -s * 0.1);
+    ctx.quadraticCurveTo(s * 0.08, 0, s * 0.19, s * 0.1);
     ctx.strokeStyle = c.ink;
-    ctx.lineWidth = s * 0.055;
+    ctx.lineWidth = s * 0.05;
     ctx.stroke();
 
     ctx.restore();
