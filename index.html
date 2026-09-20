@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#03141F">
-<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark and the jellyfish.">
+<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark, the jellyfish and the man o' war.">
 <style>[hidden]{display:none !important;}</style>
 <title>Squid Snack</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -136,7 +136,7 @@
 
   <div class="veil" id="titleVeil">
     <h1>Squid Snack</h1>
-    <p>Drag your finger to swim. Eat the glowing fish. Dodge the shark and the jellyfish. Catch a shrimp for an extra heart.</p>
+    <p>Drag your finger to swim. Eat the glowing fish. Keep clear of the shark, the jellyfish and the man o' war. Catch a shrimp for an extra heart.</p>
     <div class="cue">Touch to start</div>
   </div>
 
@@ -181,12 +181,14 @@
   var FAST_SHARK_AT = 100;   /* shark crosses 50% faster */
   var FAST_SHRIMP_AT = 150;  /* shrimp crosses 50% faster again */
   var TWO_SHARKS_AT = 200;   /* a second, independently timed shark joins */
+  var MANOWAR_EVERY = 50;    /* a man o' war drifts across on every 50th fish */
 
   var state = "title";
   var score = 0, lives = 3, best = 0;
   var time = 0;
-  var squid, sharks = [], shrimp = null, foods = [], jellies = [], bubbles = [], sparks = [];
+  var squid, sharks = [], shrimp = null, manowar = null, foods = [], jellies = [], bubbles = [], sparks = [];
   var nextShrimpAt = 10;
+  var nextManowarAt = MANOWAR_EVERY;
   var lastHitBy = "shark";
 
   /* Plush-toy squid: deep red, wide flat fin cap, stubby arms, felt-black face. */
@@ -201,6 +203,17 @@
     belly: "#F7BDB7",
     blush: "#FF8A93",
     ink: "#160A0D"
+  };
+
+  var MOW = {
+    floatTop: "#BFE6FF",
+    floatMid: "#B49BF5",
+    floatLow: "#F08BC4",
+    crest: "#E4C6FF",
+    arm: "rgba(138,120,230,0.85)",
+    armCore: "rgba(206,196,255,0.95)",
+    spark: "#8CF6FF",
+    glow: "124,220,255"
   };
 
   var JELLY = {
@@ -236,10 +249,20 @@
     for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
     for (var j = 0; j < jellies.length; j++) { jellies[j].size = jellies[j].sizeF * U * SQUID_R; }
     if (shrimp) { shrimp.size = U * 0.042; }
+    if (manowar) { manowar.size = U * 0.132; }
     if (squid) updateHearts(false);
   }
 
   function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function distToSeg(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var L = dx * dx + dy * dy;
+    var u = L > 0 ? ((px - x1) * dx + (py - y1) * dy) / L : 0;
+    if (u < 0) u = 0; else if (u > 1) u = 1;
+    var qx = x1 + u * dx, qy = y1 + u * dy;
+    return Math.hypot(px - qx, py - qy);
+  }
 
   function wrapAngle(a) {
     while (a > Math.PI) a -= TAU;
@@ -441,6 +464,99 @@
     }
   }
 
+  /* A big man o' war drifts straight across, trailing long stinging tentacles. */
+  function spawnManowar() {
+    var size = U * 0.132;
+    var fromLeft = Math.random() < 0.5;
+    var arms = [];
+    var N = 5;
+    for (var i = 0; i < N; i++) {
+      arms.push({
+        offF: ((i / (N - 1)) - 0.5) * 3.4,
+        lenF: rand(3.8, 5.4),
+        ph: i * 0.8,
+        spark: Math.random(),
+        sparkSp: rand(0.22, 0.42),
+        pts: []
+      });
+    }
+    manowar = {
+      size: size,
+      dir: fromLeft ? 1 : -1,
+      x: fromLeft ? -size * 2.4 : W + size * 2.4,
+      y: rand(U * 0.17, Math.max(U * 0.2, H * 0.3)),
+      speed: U * 0.075,
+      wave: rand(0.8, 1.1),
+      bob: 0,
+      surge: 0,
+      surgeIn: rand(0.8, 1.8),
+      arms: arms
+    };
+  }
+
+  function manowarShape() {
+    var m = manowar;
+    var SEG = 22;
+    for (var i = 0; i < m.arms.length; i++) {
+      var a = m.arms[i];
+      var bx = m.x + a.offF * m.size;
+      var by = m.y + m.size * 0.42;
+      var len = a.lenF * m.size;
+      a.pts.length = 0;
+      for (var k = 0; k <= SEG; k++) {
+        var u = k / SEG;
+        var wob = Math.sin(time * m.wave * 1.7 + a.ph + u * 4.4) * m.size * 0.24 * u;
+        var trail = -m.dir * u * u * m.size * 0.6;
+        a.pts.push(bx + wob + trail, by + u * len);
+      }
+    }
+  }
+
+  function updateManowar(dt) {
+    if (!manowar) return;
+    var m = manowar;
+
+    m.x += m.dir * m.speed * dt;
+    m.bob = Math.sin(time * 1.3) * m.size * 0.09;
+
+    m.surgeIn -= dt;
+    if (m.surgeIn <= 0) { m.surge = 1; m.surgeIn = rand(1.3, 2.4); }
+    if (m.surge > 0) m.surge = Math.max(0, m.surge - dt * 1.7);
+
+    for (var i = 0; i < m.arms.length; i++) {
+      var a = m.arms[i];
+      a.spark += dt * a.sparkSp;
+      if (a.spark > 1.25) a.spark -= 1.5;
+    }
+
+    manowarShape();
+
+    var out = m.size * 8;
+    if (m.x < -out || m.x > W + out) { manowar = null; return; }
+
+    if (squid.inv > 0) return;
+
+    var ex = (squid.x - m.x) / (m.size * 1.85 + squid.size * 0.5);
+    var ey = (squid.y - (m.y + m.bob)) / (m.size * 0.85 + squid.size * 0.5);
+    if (ex * ex + ey * ey < 1) {
+      burst(squid.x, squid.y, MOW.glow, 20);
+      hitHeart(m.x, m.y + m.bob, "manowar");
+      return;
+    }
+
+    var reach = m.size * 0.07 + squid.size * 0.55;
+    for (var j = 0; j < m.arms.length; j++) {
+      var p = m.arms[j].pts;
+      for (var k = 0; k + 3 < p.length; k += 2) {
+        if (distToSeg(squid.x, squid.y, p[k], p[k + 1], p[k + 2], p[k + 3]) < reach) {
+          burst(squid.x, squid.y, MOW.glow, 20);
+          hitHeart(p[k], p[k + 1], "manowar");
+          return;
+        }
+      }
+    }
+  }
+
   function reset() {
     time = 0;
     score = 0;
@@ -458,7 +574,9 @@
     jellies = [];
     sparks = [];
     shrimp = null;
+    manowar = null;
     nextShrimpAt = 10;
+    nextManowarAt = MANOWAR_EVERY;
     for (var i = 0; i < foodTarget(); i++) foods.push(spawnFood());
     makeBubbles();
     pointer.down = false;
@@ -559,7 +677,10 @@
     pointer.down = false;
     pointer.coast = 0;
     if (score > best) { best = score; saveBest(best); }
-    overWhyEl.textContent = lastHitBy === "jelly" ? "A jellyfish got you." : "The shark got you.";
+    overWhyEl.textContent =
+      lastHitBy === "jelly" ? "A jellyfish got you." :
+      lastHitBy === "manowar" ? "The man o' war got you." :
+      "The shark got you.";
     finalScoreEl.textContent = String(score);
     bestLineEl.textContent = "Best " + best;
     overVeil.hidden = false;
@@ -793,11 +914,17 @@
           nextShrimpAt += 10;
           if (!shrimp) spawnShrimp();
         }
+        if (score >= nextManowarAt) {
+          nextManowarAt += MANOWAR_EVERY;
+          if (!manowar) spawnManowar();
+        }
       }
     }
     while (foods.length < foodTarget()) foods.push(spawnFood());
 
     updateShrimp(dt);
+    updateManowar(dt);
+    if (lives <= 0) return;
     updateJellies(dt);
   }
 
@@ -994,6 +1121,131 @@
     ctx.fill();
     ctx.restore();
     ctx.globalAlpha = 1;
+  }
+
+  function drawManowar() {
+    var m = manowar;
+    var r = m.size;
+    var cy = m.y + m.bob;
+    var surge = m.surge;
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (var i = 0; i < m.arms.length; i++) {
+      var a = m.arms[i];
+      var p = a.pts;
+      var SEG = (p.length / 2) - 1;
+
+      ctx.beginPath();
+      ctx.moveTo(p[0], p[1]);
+      for (var k = 2; k + 1 < p.length; k += 2) ctx.lineTo(p[k], p[k + 1]);
+
+      ctx.lineWidth = r * 0.24;
+      ctx.strokeStyle = "rgba(" + MOW.glow + "," + (0.08 + surge * 0.12).toFixed(3) + ")";
+      ctx.stroke();
+
+      ctx.lineWidth = r * 0.12;
+      ctx.strokeStyle = MOW.arm;
+      ctx.stroke();
+
+      ctx.lineWidth = r * 0.045;
+      ctx.strokeStyle = MOW.armCore;
+      ctx.stroke();
+
+      var centre = a.spark * SEG;
+      var lo = Math.max(0, Math.floor(centre - 3.2));
+      var hi = Math.min(SEG, Math.ceil(centre + 0.8));
+      if (hi > lo) {
+        ctx.beginPath();
+        ctx.moveTo(p[lo * 2], p[lo * 2 + 1]);
+        for (var q = lo + 1; q <= hi; q++) ctx.lineTo(p[q * 2], p[q * 2 + 1]);
+        ctx.shadowColor = MOW.spark;
+        ctx.shadowBlur = r * (0.5 + surge * 0.7);
+        ctx.lineWidth = r * 0.085;
+        ctx.strokeStyle = MOW.spark;
+        ctx.stroke();
+        ctx.lineWidth = r * 0.03;
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      if (surge > 0.3) {
+        ctx.strokeStyle = "rgba(255,255,255," + (surge * 0.75).toFixed(3) + ")";
+        ctx.lineWidth = r * 0.022;
+        for (var z = 4; z < SEG; z += 5) {
+          var zx = p[z * 2], zy = p[z * 2 + 1];
+          var w2 = r * 0.13 * surge;
+          ctx.beginPath();
+          ctx.moveTo(zx - w2, zy - w2 * 0.45);
+          ctx.lineTo(zx + w2 * 0.55, zy + w2 * 0.15);
+          ctx.lineTo(zx - w2 * 0.35, zy + w2 * 0.75);
+          ctx.stroke();
+        }
+      }
+
+      ctx.beginPath();
+      ctx.arc(p[p.length - 2], p[p.length - 1], r * 0.055, 0, TAU);
+      ctx.fillStyle = MOW.spark;
+      ctx.fill();
+    }
+
+    var halo = ctx.createRadialGradient(m.x, cy, 0, m.x, cy, r * 2.6);
+    halo.addColorStop(0, "rgba(" + MOW.glow + "," + (0.14 + surge * 0.16).toFixed(3) + ")");
+    halo.addColorStop(1, "rgba(" + MOW.glow + ",0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(m.x, cy, r * 2.6, 0, TAU);
+    ctx.fill();
+
+    ctx.translate(m.x, cy);
+    var w = r * 1.85, h = r * 0.62;
+
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.6, -h * 0.55);
+    ctx.quadraticCurveTo(0, -h * 2.25, w * 0.6, -h * 0.55);
+    ctx.quadraticCurveTo(0, -h * 1.0, -w * 0.6, -h * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = MOW.crest;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(-w, 0);
+    ctx.bezierCurveTo(-w * 0.72, -h * 1.1, w * 0.72, -h * 1.1, w, 0);
+    ctx.bezierCurveTo(w * 0.68, h * 0.9, -w * 0.68, h * 0.9, -w, 0);
+    ctx.closePath();
+    var fg = ctx.createLinearGradient(0, -h * 1.1, 0, h * 0.9);
+    fg.addColorStop(0, MOW.floatTop);
+    fg.addColorStop(0.5, MOW.floatMid);
+    fg.addColorStop(1, MOW.floatLow);
+    ctx.fillStyle = fg;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.9, -h * 0.18);
+    ctx.bezierCurveTo(-w * 0.66, -h * 0.95, w * 0.66, -h * 0.95, w * 0.9, -h * 0.18);
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = r * 0.045;
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.3 + surge * 0.4;
+    ctx.strokeStyle = MOW.spark;
+    ctx.lineWidth = r * 0.03;
+    for (var c = 0; c < 3; c++) {
+      var cx = (c - 1) * w * 0.44;
+      ctx.beginPath();
+      ctx.moveTo(cx, h * 0.2);
+      ctx.lineTo(cx + r * 0.05, h * 0.55);
+      ctx.lineTo(cx - r * 0.04, h * 0.8);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
   }
 
   function drawShark(shark) {
@@ -1332,6 +1584,7 @@
       for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
       if (shrimp) drawShrimp();
       drawJellies();
+      if (manowar) drawManowar();
       for (var k = 0; k < sharks.length; k++) {
         if (sharks[k].phase !== "wait") drawShark(sharks[k]);
       }
