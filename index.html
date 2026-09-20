@@ -178,12 +178,13 @@
   /* Difficulty steps, by fish eaten. */
   var NO_WARNING_AT = 50;    /* shark stops showing the warning ring */
   var FAST_SHARK_AT = 100;   /* shark crosses 50% faster */
-  var FAST_SHRIMP_AT = 150;  /* shrimp crosses 50% faster */
+  var FAST_SHRIMP_AT = 150;  /* shrimp crosses 50% faster again */
+  var TWO_SHARKS_AT = 200;   /* a second, independently timed shark joins */
 
   var state = "title";
   var score = 0, lives = 3, best = 0;
   var time = 0;
-  var squid, shark, shrimp = null, foods = [], drifters = [], bubbles = [], sparks = [];
+  var squid, sharks = [], shrimp = null, foods = [], drifters = [], bubbles = [], sparks = [];
   var nextShrimpAt = 10;
   var lastHitBy = "shark";
 
@@ -219,7 +220,7 @@
     cv.height = Math.round(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     if (squid) { squid.size = U * 0.05; }
-    if (shark) { shark.size = U * 0.082; }
+    for (var k = 0; k < sharks.length; k++) { sharks[k].size = U * 0.082; }
     for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
     for (var j = 0; j < drifters.length; j++) { drifters[j].size = U * 0.046; }
     if (shrimp) { shrimp.size = U * 0.042; }
@@ -250,15 +251,16 @@
 
   function spawnFood() {
     var r = U * 0.024;
-    var x, y, tries = 0;
+    var x, y, tries = 0, clash;
     do {
       x = rand(r * 3, W - r * 3);
       y = rand(U * 0.16, H - r * 3);
+      clash = Math.hypot(x - squid.x, y - squid.y) < U * 0.28;
+      for (var k = 0; !clash && k < sharks.length; k++) {
+        if (Math.hypot(x - sharks[k].x, y - sharks[k].y) < U * 0.22) clash = true;
+      }
       tries++;
-    } while (tries < 24 && (
-      Math.hypot(x - squid.x, y - squid.y) < U * 0.28 ||
-      Math.hypot(x - shark.x, y - shark.y) < U * 0.22
-    ));
+    } while (tries < 24 && clash);
     return {
       x: x, y: y, r: r,
       dir: rand(0, TAU),
@@ -389,7 +391,7 @@
       y: ey - dy * size * 2.6,
       angle: angle,
       size: size,
-      speed: U * 0.115 * (score >= FAST_SHRIMP_AT ? 1.5 : 1),
+      speed: U * 0.1725 * (score >= FAST_SHRIMP_AT ? 1.5 : 1),
       wig: 0,
       px: 0, py: 0
     };
@@ -437,17 +439,7 @@
       inv: 1.2,
       wig: 0
     };
-    shark = {
-      x: -99999, y: -99999,
-      angle: Math.PI / 2,
-      size: U * 0.082,
-      phase: "wait",
-      timer: 1.8,
-      speed: 0,
-      wag: 0,
-      bob: 0,
-      lastEdge: -1
-    };
+    sharks = [makeShark(1.8)];
     foods = [];
     drifters = [];
     sparks = [];
@@ -597,9 +589,28 @@
     return rand(lo, hi);
   }
 
+  function makeShark(delay) {
+    return {
+      x: -99999, y: -99999,
+      angle: Math.PI / 2,
+      size: U * 0.082,
+      phase: "wait",
+      timer: delay,
+      speed: 0,
+      wag: rand(0, TAU),
+      bob: 0,
+      lastEdge: -1
+    };
+  }
+
+  function sharkCount() {
+    return score >= TWO_SHARKS_AT ? 2 : 1;
+  }
+
   /* Shark surfaces its nose at a random edge, holds 1-3s, then runs
-     straight or diagonally all the way across and leaves. */
-  function beginPeek() {
+     straight or diagonally all the way across and leaves. Each shark
+     keeps its own timers, so two of them never move together. */
+  function beginPeek(shark) {
     var s = shark.size;
     var m = s * 1.7;
     var edge = Math.floor(Math.random() * 4);
@@ -705,39 +716,47 @@
     squid.wig += dt * (3 + sv / (U * 0.12));
     if (squid.inv > 0) squid.inv -= dt;
 
-    /* --- shark --- */
+    /* --- sharks --- */
     var chargeSpeed = Math.min(U * 1.35, U * (0.45 + score * 0.012));
     if (score >= FAST_SHARK_AT) chargeSpeed *= 1.5;
-    if (shark.phase === "wait") {
-      shark.timer -= dt;
-      if (shark.timer <= 0) beginPeek();
-    } else if (shark.phase === "peek") {
-      shark.timer -= dt;
-      shark.bob = Math.sin(time * 5.5) * shark.size * 0.07;
-      if (shark.timer <= 0) {
-        shark.phase = "charge";
-        shark.speed = chargeSpeed;
-      }
-    } else {
-      shark.bob = 0;
-      shark.x += Math.cos(shark.angle) * shark.speed * dt;
-      shark.y += Math.sin(shark.angle) * shark.speed * dt;
-      var out = shark.size * 3;
-      if (shark.x < -out || shark.x > W + out || shark.y < -out || shark.y > H + out) {
-        shark.phase = "wait";
-        shark.timer = nextGap();
-        shark.x = -99999;
-        shark.y = -99999;
-      }
-    }
-    shark.wag += dt * (shark.phase === "charge" ? 13 : 3.6);
 
-    if (squid.inv <= 0 && shark.phase !== "wait") {
-      var noseX = shark.x + Math.cos(shark.angle) * shark.size * 0.75;
-      var noseY = shark.y + Math.sin(shark.angle) * shark.size * 0.75;
-      if (Math.hypot(noseX - squid.x, noseY - squid.y) < shark.size * 0.62 + squid.size * 0.7) {
-        burst(squid.x, squid.y, "255,109,145", 16);
-        hitHeart(noseX, noseY, "shark");
+    while (sharks.length < sharkCount()) sharks.push(makeShark(rand(0.4, 3.6)));
+    while (sharks.length > sharkCount()) sharks.pop();
+
+    for (var k = 0; k < sharks.length; k++) {
+      var sk = sharks[k];
+      if (sk.phase === "wait") {
+        sk.timer -= dt;
+        if (sk.timer <= 0) beginPeek(sk);
+      } else if (sk.phase === "peek") {
+        sk.timer -= dt;
+        sk.bob = Math.sin(time * 5.5 + k * 1.9) * sk.size * 0.07;
+        if (sk.timer <= 0) {
+          sk.phase = "charge";
+          sk.speed = chargeSpeed;
+        }
+      } else {
+        sk.bob = 0;
+        sk.x += Math.cos(sk.angle) * sk.speed * dt;
+        sk.y += Math.sin(sk.angle) * sk.speed * dt;
+        var out = sk.size * 3;
+        if (sk.x < -out || sk.x > W + out || sk.y < -out || sk.y > H + out) {
+          sk.phase = "wait";
+          sk.timer = nextGap();
+          sk.x = -99999;
+          sk.y = -99999;
+        }
+      }
+      sk.wag += dt * (sk.phase === "charge" ? 13 : 3.6);
+
+      if (squid.inv <= 0 && sk.phase !== "wait") {
+        var noseX = sk.x + Math.cos(sk.angle) * sk.size * 0.75;
+        var noseY = sk.y + Math.sin(sk.angle) * sk.size * 0.75;
+        if (Math.hypot(noseX - squid.x, noseY - squid.y) < sk.size * 0.62 + squid.size * 0.7) {
+          burst(squid.x, squid.y, "255,109,145", 16);
+          hitHeart(noseX, noseY, "shark");
+          if (lives <= 0) return;
+        }
       }
     }
 
@@ -963,7 +982,7 @@
     ctx.globalAlpha = 1;
   }
 
-  function drawShark() {
+  function drawShark(shark) {
     var s = shark.size;
     ctx.save();
     ctx.translate(shark.x, shark.y);
@@ -1177,7 +1196,9 @@
       for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
       if (shrimp) drawShrimp();
       drawDrifters();
-      if (shark.phase !== "wait") drawShark();
+      for (var k = 0; k < sharks.length; k++) {
+        if (sharks[k].phase !== "wait") drawShark(sharks[k]);
+      }
       drawSquid();
     }
     drawSparks();
