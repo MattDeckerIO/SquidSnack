@@ -45,9 +45,17 @@
     padding:calc(env(safe-area-inset-top,0px) + 20px) calc(env(safe-area-inset-right,0px) + 22px) 0 calc(env(safe-area-inset-left,0px) + 22px);
     pointer-events:none;
   }
-  #hearts{display:flex;gap:8px;}
-  #hearts svg{width:38px;height:38px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));transition:transform .18s ease, opacity .18s ease;}
-  #hearts svg.gone{opacity:.32;transform:scale(.78);}
+  #hearts{
+    display:grid;
+    grid-template-columns:repeat(1,var(--hs,38px));
+    gap:calc(var(--hs,38px) * 0.2);
+    justify-content:start;
+  }
+  #hearts.shake{animation:heartshake .36s ease-out;}
+  #hearts svg{width:var(--hs,38px);height:var(--hs,38px);filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));}
+  #hearts svg.pop{animation:heartpop .55s ease-out;}
+  @keyframes heartpop{0%{transform:scale(.5);}45%{transform:scale(1.34);}100%{transform:scale(1);}}
+  @keyframes heartshake{0%,100%{transform:translateX(0);}25%{transform:translateX(-5px);}55%{transform:translateX(4px);}80%{transform:translateX(-2px);}}
   #hearts svg .fill{fill:var(--heart);}
   #hearts svg.gone .fill{fill:var(--heart-off);}
 
@@ -106,6 +114,8 @@
   #flash{position:absolute;inset:0;background:var(--heart);opacity:0;pointer-events:none;}
   #flash.hit{animation:hitflash .45s ease-out;}
   @keyframes hitflash{0%{opacity:.42;}100%{opacity:0;}}
+  #flash.heal{background:#5FD9A6;animation:healflash .5s ease-out;}
+  @keyframes healflash{0%{opacity:.26;}100%{opacity:0;}}
 </style>
 </head>
 <body>
@@ -126,7 +136,7 @@
 
   <div class="veil" id="titleVeil">
     <h1>Squid Snack</h1>
-    <p>Drag your finger to swim. Eat the glowing fish. Dodge the shark and the purple squids.</p>
+    <p>Drag your finger to swim. Eat the glowing fish. Dodge the shark and the purple squids. Catch a shrimp for an extra heart.</p>
     <div class="cue">Touch to start</div>
   </div>
 
@@ -163,10 +173,13 @@
     '<path class="fill" d="M12 21.2C7.2 18.1 2.6 14.6 2.6 10.3A4.9 4.9 0 0 1 12 8.1a4.9 4.9 0 0 1 9.4 2.2c0 4.3-4.6 7.8-9.4 10.9z"/>' +
     '</svg>';
 
+  var MAX_LIVES = 32, HEARTS_PER_ROW = 16;
+
   var state = "title";
   var score = 0, lives = 3, best = 0;
   var time = 0;
-  var squid, shark, foods = [], drifters = [], bubbles = [], sparks = [];
+  var squid, shark, shrimp = null, foods = [], drifters = [], bubbles = [], sparks = [];
+  var nextShrimpAt = 10;
   var lastHitBy = "shark";
 
   var YOU = {
@@ -204,6 +217,8 @@
     if (shark) { shark.size = U * 0.082; }
     for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
     for (var j = 0; j < drifters.length; j++) { drifters[j].size = U * 0.046; }
+    if (shrimp) { shrimp.size = U * 0.042; }
+    if (squid) updateHearts(false);
   }
 
   function rand(a, b) { return a + Math.random() * (b - a); }
@@ -340,6 +355,71 @@
     }
   }
 
+  /* One shrimp drifts slowly across every 10 fish. Catching it refills a heart. */
+  function spawnShrimp() {
+    var size = U * 0.042;
+    var m = size * 2.4;
+    var edge = Math.floor(Math.random() * 4);
+    var base = [Math.PI / 2, Math.PI, -Math.PI / 2, 0][edge];
+    var roll = Math.random();
+    var diag = roll < 0.5 ? 0 : (roll < 0.75 ? -1 : 1);
+    var angle = base + diag * (Math.PI / 4);
+    var dx = Math.cos(angle), dy = Math.sin(angle);
+    var ex, ey;
+
+    if (edge === 0 || edge === 2) {
+      ey = edge === 0 ? 0 : H;
+      if (dx > 0.1) ex = rand(m, Math.max(m + 1, W * 0.5));
+      else if (dx < -0.1) ex = rand(Math.min(W - m - 1, W * 0.5), W - m);
+      else ex = rand(m, W - m);
+    } else {
+      ex = edge === 1 ? W : 0;
+      if (dy > 0.1) ey = rand(m, Math.max(m + 1, H * 0.5));
+      else if (dy < -0.1) ey = rand(Math.min(H - m - 1, H * 0.5), H - m);
+      else ey = rand(m, H - m);
+    }
+
+    shrimp = {
+      x: ex - dx * size * 2.6,
+      y: ey - dy * size * 2.6,
+      angle: angle,
+      size: size,
+      speed: U * 0.115,
+      wig: 0,
+      px: 0, py: 0
+    };
+  }
+
+  function updateShrimp(dt) {
+    if (!shrimp) return;
+    var s = shrimp.size;
+    shrimp.x += Math.cos(shrimp.angle) * shrimp.speed * dt;
+    shrimp.y += Math.sin(shrimp.angle) * shrimp.speed * dt;
+    shrimp.wig += dt * 4.2;
+
+    var bob = Math.sin(time * 2.6) * s * 0.22;
+    shrimp.px = shrimp.x - Math.sin(shrimp.angle) * bob;
+    shrimp.py = shrimp.y + Math.cos(shrimp.angle) * bob;
+
+    var out = s * 4;
+    if (shrimp.x < -out || shrimp.x > W + out || shrimp.y < -out || shrimp.y > H + out) {
+      shrimp = null;
+      return;
+    }
+
+    if (Math.hypot(shrimp.px - squid.x, shrimp.py - squid.y) < s * 0.95 + squid.size * 0.8) {
+      burst(shrimp.px, shrimp.py, "255,150,120", 20);
+      shrimp = null;
+      if (lives < MAX_LIVES) {
+        lives++;
+        updateHearts(true);
+        flashEl.classList.remove("hit", "heal");
+        void flashEl.offsetWidth;
+        flashEl.classList.add("heal");
+      }
+    }
+  }
+
   function reset() {
     time = 0;
     score = 0;
@@ -366,6 +446,8 @@
     foods = [];
     drifters = [];
     sparks = [];
+    shrimp = null;
+    nextShrimpAt = 10;
     for (var i = 0; i < foodTarget(); i++) foods.push(spawnFood());
     makeBubbles();
     pointer.down = false;
@@ -375,22 +457,31 @@
     paintHud();
   }
 
-  function paintHud() {
-    var html = "";
-    for (var i = 0; i < 3; i++) html += HEART_SVG;
-    heartsEl.innerHTML = html;
-    var svgs = heartsEl.querySelectorAll("svg");
-    for (var j = 0; j < svgs.length; j++) {
-      if (j >= lives) svgs[j].classList.add("gone");
-    }
-    scoreEl.textContent = String(score);
+  /* Hearts wrap at 16 per row and shrink so a full 32 still fits the width. */
+  function heartSize() {
+    var perRow = Math.min(Math.max(lives, 1), HEARTS_PER_ROW);
+    var avail = Math.max(140, W - Math.max(150, W * 0.22));
+    return Math.max(11, Math.min(38, (avail / perRow) / 1.2));
   }
 
-  function updateHearts() {
-    var svgs = heartsEl.querySelectorAll("svg");
-    for (var j = 0; j < svgs.length; j++) {
-      svgs[j].classList.toggle("gone", j >= lives);
+  function updateHearts(popLast) {
+    var cols = Math.min(Math.max(lives, 1), HEARTS_PER_ROW);
+    heartsEl.style.setProperty("--hs", heartSize().toFixed(1) + "px");
+    heartsEl.style.gridTemplateColumns = "repeat(" + cols + ", var(--hs))";
+
+    var html = "";
+    for (var i = 0; i < lives; i++) html += HEART_SVG;
+    heartsEl.innerHTML = html;
+
+    if (popLast && lives > 0) {
+      var got = heartsEl.children[lives - 1];
+      if (got) got.classList.add("pop");
     }
+  }
+
+  function paintHud() {
+    updateHearts(false);
+    scoreEl.textContent = String(score);
   }
 
   /* ---------- input ---------- */
@@ -468,12 +559,15 @@
   function hitHeart(sx, sy, cause) {
     lives--;
     lastHitBy = cause;
-    updateHearts();
+    updateHearts(false);
+    heartsEl.classList.remove("shake");
+    void heartsEl.offsetWidth;
+    heartsEl.classList.add("shake");
     squid.inv = 1.7;
     var away = Math.atan2(squid.y - sy, squid.x - sx);
     squid.vx = Math.cos(away) * U * 0.62;
     squid.vy = Math.sin(away) * U * 0.62;
-    flashEl.classList.remove("hit");
+    flashEl.classList.remove("hit", "heal");
     void flashEl.offsetWidth;
     flashEl.classList.add("hit");
     if (lives <= 0) endGame();
@@ -656,10 +750,15 @@
         foods.splice(f, 1);
         score++;
         scoreEl.textContent = String(score);
+        if (score >= nextShrimpAt) {
+          nextShrimpAt += 10;
+          if (!shrimp) spawnShrimp();
+        }
       }
     }
     while (foods.length < foodTarget()) foods.push(spawnFood());
 
+    updateShrimp(dt);
     updateDrifters(dt);
   }
 
@@ -743,6 +842,119 @@
     ctx.fillStyle = "#03141F";
     ctx.fill();
     ctx.restore();
+  }
+
+  function heartPath(r) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * 0.92);
+    ctx.bezierCurveTo(-r * 1.35, -r * 0.12, -r * 0.72, -r * 1.16, 0, -r * 0.42);
+    ctx.bezierCurveTo(r * 0.72, -r * 1.16, r * 1.35, -r * 0.12, 0, r * 0.92);
+    ctx.closePath();
+  }
+
+  function drawShrimp() {
+    var s = shrimp.size;
+    var w = shrimp.wig;
+
+    ctx.save();
+    var gg = ctx.createRadialGradient(shrimp.px, shrimp.py, 0, shrimp.px, shrimp.py, s * 2.8);
+    gg.addColorStop(0, "rgba(255,146,110,0.30)");
+    gg.addColorStop(1, "rgba(255,146,110,0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(shrimp.px, shrimp.py, s * 2.8, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(shrimp.px, shrimp.py);
+    ctx.rotate(shrimp.angle);
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = "rgba(255,206,188,0.8)";
+    ctx.lineWidth = Math.max(1, s * 0.07);
+    for (var a = 0; a < 2; a++) {
+      var sg = a === 0 ? -1 : 1;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.86, sg * s * 0.1);
+      ctx.quadraticCurveTo(
+        s * 0.1, sg * s * (0.75 + Math.sin(w + a) * 0.12),
+        -s * 1.5, sg * s * (1.0 + Math.sin(w * 1.3 + a) * 0.2)
+      );
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#F4805B";
+    ctx.lineWidth = Math.max(1, s * 0.08);
+    for (var l = 0; l < 5; l++) {
+      var lx = s * (0.55 - l * 0.32);
+      var sw = Math.sin(w * 2 + l * 0.8) * s * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(lx, s * 0.26);
+      ctx.lineTo(lx - s * 0.1 + sw, s * 0.66);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(-s * 1.02, -s * 0.12);
+    ctx.lineTo(-s * 1.62, -s * 0.62);
+    ctx.lineTo(-s * 1.5, s * 0.02);
+    ctx.lineTo(-s * 1.62, s * 0.6);
+    ctx.closePath();
+    ctx.fillStyle = "#F4805B";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(s * 1.05, -s * 0.02);
+    ctx.bezierCurveTo(s * 0.72, -s * 0.62, -s * 0.2, -s * 0.72, -s * 0.82, -s * 0.34);
+    ctx.bezierCurveTo(-s * 1.12, -s * 0.14, -s * 1.08, s * 0.1, -s * 0.9, s * 0.2);
+    ctx.bezierCurveTo(-s * 0.3, s * 0.52, s * 0.62, s * 0.44, s * 1.05, -s * 0.02);
+    ctx.closePath();
+    var bg = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.6);
+    bg.addColorStop(0, "#FFC2A5");
+    bg.addColorStop(0.5, "#FF9772");
+    bg.addColorStop(1, "#E9633E");
+    ctx.fillStyle = bg;
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(200,78,48,0.42)";
+    ctx.lineWidth = Math.max(1, s * 0.055);
+    for (var g = 0; g < 3; g++) {
+      var gx = -s * (0.05 + g * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(gx, -s * 0.48 + g * s * 0.06);
+      ctx.quadraticCurveTo(gx - s * 0.08, 0, gx + s * 0.02, s * 0.32 - g * s * 0.04);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(s * 1.0, -s * 0.04);
+    ctx.lineTo(s * 1.52, -s * 0.3);
+    ctx.lineTo(s * 0.98, s * 0.12);
+    ctx.closePath();
+    ctx.fillStyle = "#FFB894";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(s * 0.66, -s * 0.2, s * 0.13, 0, TAU);
+    ctx.fillStyle = "#2A1712";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(s * 0.69, -s * 0.24, s * 0.045, 0, TAU);
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fill();
+
+    ctx.restore();
+
+    var lift = Math.sin(time * 3) * s * 0.14;
+    ctx.save();
+    ctx.translate(shrimp.px, shrimp.py - s * 2.05 + lift);
+    ctx.globalAlpha = lives < MAX_LIVES ? 0.95 : 0.35;
+    heartPath(s * 0.42);
+    ctx.fillStyle = "#FF4D6D";
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   function drawShark() {
@@ -957,6 +1169,7 @@
     drawBackground();
     if (state === "playing" || state === "over") {
       for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
+      if (shrimp) drawShrimp();
       drawDrifters();
       if (shark.phase !== "wait") drawShark();
       drawSquid();
