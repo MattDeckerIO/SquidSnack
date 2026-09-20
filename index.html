@@ -250,11 +250,15 @@
       wig: 0
     };
     shark = {
-      x: W * 0.5, y: -U * 0.3,
+      x: -99999, y: -99999,
       angle: Math.PI / 2,
       size: U * 0.082,
-      stun: 1.6,
-      wag: 0
+      phase: "wait",
+      timer: 1.8,
+      speed: 0,
+      wag: 0,
+      bob: 0,
+      lastEdge: -1
     };
     foods = [];
     sparks = [];
@@ -360,12 +364,9 @@
     lives--;
     updateHearts();
     squid.inv = 1.7;
-    shark.stun = 1.35;
-    var away = Math.atan2(shark.y - squid.y, shark.x - squid.x);
-    shark.x += Math.cos(away) * U * 0.22;
-    shark.y += Math.sin(away) * U * 0.22;
-    squid.vx = -Math.cos(away) * U * 0.55;
-    squid.vy = -Math.sin(away) * U * 0.55;
+    var away = Math.atan2(squid.y - shark.y, squid.x - shark.x);
+    squid.vx = Math.cos(away) * U * 0.62;
+    squid.vy = Math.sin(away) * U * 0.62;
     flashEl.classList.remove("hit");
     void flashEl.offsetWidth;
     flashEl.classList.add("hit");
@@ -383,6 +384,48 @@
         c: color
       });
     }
+  }
+
+  function nextGap() {
+    var lo = Math.max(0.7, 2.2 - score * 0.02);
+    var hi = Math.max(lo + 0.9, 4.2 - score * 0.03);
+    return rand(lo, hi);
+  }
+
+  /* Shark surfaces its nose at a random edge, holds 1-3s, then runs
+     straight or diagonally all the way across and leaves. */
+  function beginPeek() {
+    var s = shark.size;
+    var m = s * 1.7;
+    var edge = Math.floor(Math.random() * 4);
+    if (edge === shark.lastEdge) edge = (edge + 1 + Math.floor(Math.random() * 3)) % 4;
+    shark.lastEdge = edge;
+    var base = [Math.PI / 2, Math.PI, -Math.PI / 2, 0][edge];
+    var roll = Math.random();
+    var diag = roll < 0.45 ? 0 : (roll < 0.725 ? -1 : 1);
+    var angle = base + diag * (Math.PI / 4);
+    var dx = Math.cos(angle), dy = Math.sin(angle);
+    var ex, ey;
+
+    if (edge === 0 || edge === 2) {
+      ey = edge === 0 ? 0 : H;
+      if (dx > 0.1) ex = rand(m, Math.max(m + 1, W * 0.52));
+      else if (dx < -0.1) ex = rand(Math.min(W - m - 1, W * 0.48), W - m);
+      else ex = rand(m, W - m);
+    } else {
+      ex = edge === 1 ? W : 0;
+      if (dy > 0.1) ey = rand(m, Math.max(m + 1, H * 0.52));
+      else if (dy < -0.1) ey = rand(Math.min(H - m - 1, H * 0.48), H - m);
+      else ey = rand(m, H - m);
+    }
+
+    var back = s * 1.32 - s * 0.5;
+    shark.angle = angle;
+    shark.x = ex - dx * back;
+    shark.y = ey - dy * back;
+    shark.phase = "peek";
+    shark.timer = rand(1, 3);
+    shark.bob = 0;
   }
 
   function update(dt) {
@@ -458,29 +501,32 @@
     if (squid.inv > 0) squid.inv -= dt;
 
     /* --- shark --- */
-    var sharkSpeed = Math.min(U * 0.66, U * (0.30 + score * 0.0055));
-    var turnRate = 2.35;
-    if (shark.stun > 0) {
-      shark.stun -= dt;
-      shark.x += Math.cos(shark.angle) * sharkSpeed * 0.28 * dt;
-      shark.y += Math.sin(shark.angle) * sharkSpeed * 0.28 * dt;
+    var chargeSpeed = Math.min(U * 1.35, U * (0.45 + score * 0.012));
+    if (shark.phase === "wait") {
+      shark.timer -= dt;
+      if (shark.timer <= 0) beginPeek();
+    } else if (shark.phase === "peek") {
+      shark.timer -= dt;
+      shark.bob = Math.sin(time * 5.5) * shark.size * 0.07;
+      if (shark.timer <= 0) {
+        shark.phase = "charge";
+        shark.speed = chargeSpeed;
+      }
     } else {
-      var want2 = Math.atan2(squid.y - shark.y, squid.x - shark.x);
-      var diff = wrapAngle(want2 - shark.angle);
-      var step = turnRate * dt;
-      shark.angle += Math.max(-step, Math.min(step, diff));
-      shark.x += Math.cos(shark.angle) * sharkSpeed * dt;
-      shark.y += Math.sin(shark.angle) * sharkSpeed * dt;
+      shark.bob = 0;
+      shark.x += Math.cos(shark.angle) * shark.speed * dt;
+      shark.y += Math.sin(shark.angle) * shark.speed * dt;
+      var out = shark.size * 3;
+      if (shark.x < -out || shark.x > W + out || shark.y < -out || shark.y > H + out) {
+        shark.phase = "wait";
+        shark.timer = nextGap();
+        shark.x = -99999;
+        shark.y = -99999;
+      }
     }
-    shark.wag += dt * (5 + sharkSpeed / (U * 0.1));
+    shark.wag += dt * (shark.phase === "charge" ? 13 : 3.6);
 
-    var sp2 = shark.size * 1.5;
-    if (shark.x < -sp2) shark.x = -sp2;
-    if (shark.x > W + sp2) shark.x = W + sp2;
-    if (shark.y < -sp2) shark.y = -sp2;
-    if (shark.y > H + sp2) shark.y = H + sp2;
-
-    if (squid.inv <= 0 && shark.stun <= 0) {
+    if (squid.inv <= 0 && shark.phase !== "wait") {
       var noseX = shark.x + Math.cos(shark.angle) * shark.size * 0.75;
       var noseY = shark.y + Math.sin(shark.angle) * shark.size * 0.75;
       if (Math.hypot(noseX - squid.x, noseY - squid.y) < shark.size * 0.62 + squid.size * 0.7) {
@@ -596,6 +642,26 @@
     ctx.save();
     ctx.translate(shark.x, shark.y);
     ctx.rotate(shark.angle);
+    if (shark.bob) ctx.translate(0, shark.bob);
+
+    if (shark.phase === "peek") {
+      var pulse = 0.5 + 0.5 * Math.sin(time * 7);
+      ctx.save();
+      ctx.translate(s * 1.3, 0);
+      var wg = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 2.2);
+      wg.addColorStop(0, "rgba(255,77,109,0.30)");
+      wg.addColorStop(1, "rgba(255,77,109,0)");
+      ctx.fillStyle = wg;
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 2.2, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, s * (0.7 + pulse * 0.85), 0, TAU);
+      ctx.strokeStyle = "rgba(255,109,140," + (0.55 * (1 - pulse)) + ")";
+      ctx.lineWidth = Math.max(2, s * 0.09);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     var tail = Math.sin(shark.wag) * 0.34;
 
@@ -765,7 +831,7 @@
     drawBackground();
     if (state === "playing" || state === "over") {
       for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
-      drawShark();
+      if (shark.phase !== "wait") drawShark();
       drawSquid();
     }
     drawSparks();
