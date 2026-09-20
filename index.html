@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#03141F">
-<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark.">
+<meta name="description" content="A simple ocean game: swim the squid with your finger, eat the glowing fish, dodge the shark and the purple squids.">
 <style>[hidden]{display:none !important;}</style>
 <title>Squid Snack</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -126,13 +126,13 @@
 
   <div class="veil" id="titleVeil">
     <h1>Squid Snack</h1>
-    <p>Drag your finger to swim. Eat the glowing fish. Stay away from the shark.</p>
+    <p>Drag your finger to swim. Eat the glowing fish. Dodge the shark and the purple squids.</p>
     <div class="cue">Touch to start</div>
   </div>
 
   <div class="veil" id="overVeil" hidden>
     <h2>Chomp!</h2>
-    <p>The shark got you.</p>
+    <p id="overWhy">The shark got you.</p>
     <div class="big" id="finalScore">0</div>
     <p class="best" id="bestLine">Best 0</p>
     <div class="cue">Touch to swim again</div>
@@ -153,6 +153,7 @@
   var finalScoreEl = document.getElementById("finalScore");
   var bestLineEl = document.getElementById("bestLine");
   var flashEl = document.getElementById("flash");
+  var overWhyEl = document.getElementById("overWhy");
 
   var W = 1, H = 1, U = 1, DPR = 1;
   var TAU = Math.PI * 2;
@@ -165,7 +166,21 @@
   var state = "title";
   var score = 0, lives = 3, best = 0;
   var time = 0;
-  var squid, shark, foods = [], bubbles = [], sparks = [];
+  var squid, shark, foods = [], drifters = [], bubbles = [], sparks = [];
+  var lastHitBy = "shark";
+
+  var YOU = {
+    top: "#FF9FB8", mid: "#FF6F91", low: "#D64672",
+    fin: "rgba(255,150,178,0.9)",
+    arm: "#FF87A4", armEdge: "#E2547C",
+    eye: "#FFF6F8", pupil: "#14202B"
+  };
+  var THEM = {
+    top: "#C0A8F5", mid: "#9270E2", low: "#5C3FA8",
+    fin: "rgba(192,168,245,0.9)",
+    arm: "#AD8FEE", armEdge: "#7A58C8",
+    eye: "#F4EEFF", pupil: "#1B1630"
+  };
   var pointer = { down: false, coast: 0, x: 0, y: 0 };
   var keys = Object.create(null);
 
@@ -188,6 +203,7 @@
     if (squid) { squid.size = U * 0.05; }
     if (shark) { shark.size = U * 0.082; }
     for (var i = 0; i < foods.length; i++) { foods[i].r = U * 0.024; }
+    for (var j = 0; j < drifters.length; j++) { drifters[j].size = U * 0.046; }
   }
 
   function rand(a, b) { return a + Math.random() * (b - a); }
@@ -237,6 +253,93 @@
     return Math.min(9, 4 + Math.floor(score / 10));
   }
 
+  /* Purple squids: one for every perfect square of fish eaten. */
+  function drifterTarget() {
+    return Math.floor(Math.sqrt(score));
+  }
+
+  function spawnDrifter() {
+    var size = U * 0.046;
+    var edge = Math.floor(Math.random() * 4);
+    var x, y;
+    if (edge === 0) { x = rand(size, W - size); y = -size * 2; }
+    else if (edge === 1) { x = W + size * 2; y = rand(size, H - size); }
+    else if (edge === 2) { x = rand(size, W - size); y = H + size * 2; }
+    else { x = -size * 2; y = rand(size, H - size); }
+
+    var toward = Math.atan2(H * 0.5 - y, W * 0.5 - x) + rand(-0.6, 0.6);
+    var d = {
+      x: x, y: y, size: size,
+      vx: Math.cos(toward) * U * 0.16,
+      vy: Math.sin(toward) * U * 0.16,
+      tvx: Math.cos(toward) * U * 0.16,
+      tvy: Math.sin(toward) * U * 0.16,
+      angle: toward, wig: rand(0, TAU), timer: rand(0.5, 1.2),
+      entering: true
+    };
+    return d;
+  }
+
+  function reroll(d) {
+    var a = rand(0, TAU);
+    var sp;
+    if (Math.random() < 0.3) {
+      sp = rand(U * 0.5, U * 0.88);
+      d.timer = rand(0.22, 0.5);
+    } else {
+      sp = rand(U * 0.04, U * 0.2);
+      d.timer = rand(0.7, 2.1);
+    }
+    d.tvx = Math.cos(a) * sp;
+    d.tvy = Math.sin(a) * sp;
+  }
+
+  function updateDrifters(dt) {
+    while (drifters.length > drifterTarget()) drifters.pop();
+    while (drifters.length < drifterTarget()) drifters.push(spawnDrifter());
+
+    for (var i = 0; i < drifters.length; i++) {
+      var d = drifters[i];
+      d.timer -= dt;
+      if (d.timer <= 0) { reroll(d); d.entering = false; }
+
+      var ease = Math.min(1, dt * 5.5);
+      d.vx += (d.tvx - d.vx) * ease;
+      d.vy += (d.tvy - d.vy) * ease;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+
+      if (!d.entering) {
+        var pad = d.size * 1.1;
+        if (d.x < pad) { d.x = pad; d.vx = Math.abs(d.vx); d.tvx = Math.abs(d.tvx); }
+        if (d.x > W - pad) { d.x = W - pad; d.vx = -Math.abs(d.vx); d.tvx = -Math.abs(d.tvx); }
+        var padTop = Math.max(pad, U * 0.13);
+        if (d.y < padTop) { d.y = padTop; d.vy = Math.abs(d.vy); d.tvy = Math.abs(d.tvy); }
+        if (d.y > H - pad) { d.y = H - pad; d.vy = -Math.abs(d.vy); d.tvy = -Math.abs(d.tvy); }
+      } else if (d.x > d.size && d.x < W - d.size && d.y > d.size && d.y < H - d.size) {
+        d.entering = false;
+      }
+
+      var sp2 = Math.hypot(d.vx, d.vy);
+      if (sp2 > U * 0.03) {
+        d.angle += wrapAngle(Math.atan2(d.vy, d.vx) - d.angle) * Math.min(1, dt * 9);
+      }
+      d.wig += dt * (2.2 + sp2 / (U * 0.1));
+
+      if (squid.inv <= 0 && !d.entering &&
+          Math.hypot(d.x - squid.x, d.y - squid.y) < d.size * 0.8 + squid.size * 0.78) {
+        burst(d.x, d.y, "170,140,240", 16);
+        var flee = Math.atan2(d.y - squid.y, d.x - squid.x);
+        d.tvx = Math.cos(flee) * U * 0.8;
+        d.tvy = Math.sin(flee) * U * 0.8;
+        d.vx = d.tvx; d.vy = d.tvy;
+        d.timer = 0.6;
+        hitHeart(d.x, d.y, "drifter");
+        if (lives <= 0) return;
+      }
+    }
+  }
+
   function reset() {
     time = 0;
     score = 0;
@@ -261,6 +364,7 @@
       lastEdge: -1
     };
     foods = [];
+    drifters = [];
     sparks = [];
     for (var i = 0; i < foodTarget(); i++) foods.push(spawnFood());
     makeBubbles();
@@ -353,6 +457,7 @@
     pointer.down = false;
     pointer.coast = 0;
     if (score > best) { best = score; saveBest(best); }
+    overWhyEl.textContent = lastHitBy === "drifter" ? "A purple squid got you." : "The shark got you.";
     finalScoreEl.textContent = String(score);
     bestLineEl.textContent = "Best " + best;
     overVeil.hidden = false;
@@ -360,11 +465,12 @@
 
   /* ---------- update ---------- */
 
-  function hitHeart() {
+  function hitHeart(sx, sy, cause) {
     lives--;
+    lastHitBy = cause;
     updateHearts();
     squid.inv = 1.7;
-    var away = Math.atan2(squid.y - shark.y, squid.x - shark.x);
+    var away = Math.atan2(squid.y - sy, squid.x - sx);
     squid.vx = Math.cos(away) * U * 0.62;
     squid.vy = Math.sin(away) * U * 0.62;
     flashEl.classList.remove("hit");
@@ -531,7 +637,7 @@
       var noseY = shark.y + Math.sin(shark.angle) * shark.size * 0.75;
       if (Math.hypot(noseX - squid.x, noseY - squid.y) < shark.size * 0.62 + squid.size * 0.7) {
         burst(squid.x, squid.y, "255,109,145", 16);
-        hitHeart();
+        hitHeart(noseX, noseY, "shark");
       }
     }
 
@@ -553,6 +659,8 @@
       }
     }
     while (foods.length < foodTarget()) foods.push(spawnFood());
+
+    updateDrifters(dt);
   }
 
   /* ---------- draw ---------- */
@@ -738,21 +846,39 @@
   }
 
   function drawSquid() {
-    var s = squid.size;
     var flicker = squid.inv > 0 ? (Math.sin(time * 26) > -0.1 ? 1 : 0.24) : 1;
-
-    ctx.save();
-    ctx.globalAlpha = flicker;
-    ctx.translate(squid.x, squid.y);
-    ctx.rotate(squid.angle);
-
     var speed = Math.hypot(squid.vx, squid.vy) / (U * 0.95);
+    drawSquidShape(squid.x, squid.y, squid.angle, squid.size, flicker, squid.wig, speed, YOU);
+  }
+
+  function drawDrifters() {
+    for (var i = 0; i < drifters.length; i++) {
+      var d = drifters[i];
+      var speed = Math.hypot(d.vx, d.vy) / (U * 0.95);
+      ctx.save();
+      var gg = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.size * 2.4);
+      gg.addColorStop(0, "rgba(146,112,226,0.26)");
+      gg.addColorStop(1, "rgba(146,112,226,0)");
+      ctx.fillStyle = gg;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.size * 2.4, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+      drawSquidShape(d.x, d.y, d.angle, d.size, 1, d.wig, speed, THEM);
+    }
+  }
+
+  function drawSquidShape(px, py, ang, s, alpha, wig, speed, c) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(px, py);
+    ctx.rotate(ang);
 
     ctx.lineCap = "round";
     for (var i = 0; i < 8; i++) {
       var t = (i / 7) - 0.5;
       var baseY = t * s * 0.72;
-      var phase = squid.wig + i * 0.7;
+      var phase = wig + i * 0.7;
       var len = s * (1.25 + Math.abs(t) * 0.35) * (1 - speed * 0.18);
       ctx.beginPath();
       ctx.moveTo(-s * 0.42, baseY);
@@ -760,7 +886,7 @@
         -s * 0.42 - len * 0.55, baseY + Math.sin(phase) * s * 0.26,
         -s * 0.42 - len, baseY + Math.sin(phase + 1.1) * s * 0.44
       );
-      ctx.strokeStyle = (i === 0 || i === 7) ? "#E2547C" : "#FF87A4";
+      ctx.strokeStyle = (i === 0 || i === 7) ? c.armEdge : c.arm;
       ctx.lineWidth = s * (i === 0 || i === 7 ? 0.17 : 0.13);
       ctx.stroke();
     }
@@ -769,7 +895,7 @@
     ctx.moveTo(s * 0.62, -s * 0.5);
     ctx.quadraticCurveTo(s * 1.12, -s * 0.9, s * 1.02, -s * 0.28);
     ctx.closePath();
-    ctx.fillStyle = "rgba(255,150,178,0.9)";
+    ctx.fillStyle = c.fin;
     ctx.fill();
     ctx.beginPath();
     ctx.moveTo(s * 0.62, s * 0.5);
@@ -784,9 +910,9 @@
     ctx.bezierCurveTo(s * 0.1, s * 0.72, s * 0.9, s * 0.66, s * 1.16, 0);
     ctx.closePath();
     var mg = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.7);
-    mg.addColorStop(0, "#FF9FB8");
-    mg.addColorStop(0.55, "#FF6F91");
-    mg.addColorStop(1, "#D64672");
+    mg.addColorStop(0, c.top);
+    mg.addColorStop(0.55, c.mid);
+    mg.addColorStop(1, c.low);
     ctx.fillStyle = mg;
     ctx.fill();
 
@@ -800,11 +926,11 @@
       var ey = eyes[e] * s * 0.36;
       ctx.beginPath();
       ctx.arc(-s * 0.1, ey, s * 0.2, 0, TAU);
-      ctx.fillStyle = "#FFF6F8";
+      ctx.fillStyle = c.eye;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(-s * 0.05, ey, s * 0.105, 0, TAU);
-      ctx.fillStyle = "#14202B";
+      ctx.fillStyle = c.pupil;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(-s * 0.02, ey - s * 0.05, s * 0.035, 0, TAU);
@@ -831,6 +957,7 @@
     drawBackground();
     if (state === "playing" || state === "over") {
       for (var i = 0; i < foods.length; i++) drawFood(foods[i]);
+      drawDrifters();
       if (shark.phase !== "wait") drawShark();
       drawSquid();
     }
